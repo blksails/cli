@@ -1,0 +1,71 @@
+name: release
+
+# 打 v* 形式的 tag 时触发：GoReleaser 构建多平台产物并发布到 GitHub Releases。
+# 手动触发（workflow_dispatch）默认走 --snapshot，便于在不打 tag 的情况下验证发布链路。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: "以 snapshot 方式构建（不创建 Release）"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # 创建 Release、上传产物所需
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # GoReleaser 需要完整历史与 tag 生成 changelog
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # 私有依赖 pkg.blksails.net/yamuxproxy 是 vanity 路径，解析到私有仓库
+      # github.com/blksails/yamuxproxy。go 先从 pkg.blksails.net 取 go-import 元信息
+      # （公开 HTTPS），再 clone github.com/blksails/* 私有仓库。
+      #
+      # 默认的 GITHUB_TOKEN 仅能访问当前仓库（blksails/cli），无法 clone 同组织的其它
+      # 私有仓库；因此需在仓库 Secrets 配置一个有 blksails 组织 repo 读权限的 PAT：GH_PAT。
+      # 用 token 重写 https://github.com/ 为带凭据的形式，并把这两类路径标记为 GOPRIVATE，
+      # 跳过公共 proxy/sumdb 校验。如未来所有依赖均公开，可删除本步及 GH_PAT。
+      - name: Configure private module access
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          echo "GOPRIVATE=pkg.blksails.net/*,github.com/blksails/*" >> "$GITHUB_ENV"
+
+      - name: Run GoReleaser (release)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run GoReleaser (snapshot)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
+
+      - name: Upload snapshot artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bk-snapshot
+          path: dist/*
+          retention-days: 7
