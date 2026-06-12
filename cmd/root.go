@@ -23,8 +23,9 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "bk",
-	Short: "BlackSails Cloud CLI",
+	Use:     "bk",
+	Version: versionString(),
+	Short:   "BlackSails Cloud CLI",
 	Long: `BlackSails Cloud CLI is a tool to manage your BlackSails Cloud resources. 
 	黑帆云 cli 是黑帆云的命令行工具，用于管理黑帆云的资源，用于管理黑帆云的资源。发布应用程序，部署网络资源`,
 	// Uncomment the following line if your bare application

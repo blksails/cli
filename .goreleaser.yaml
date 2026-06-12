@@ -1,0 +1,90 @@
+# GoReleaser 配置 —— bk（BlackSails Cloud CLI）多平台发布
+# 文档：https://goreleaser.com
+#
+# 本地验证（不发布、不打 tag）：
+#   goreleaser release --snapshot --clean
+# 正式发布（需先打 tag，例如 git tag v0.1.0 && git push --tags）：
+#   goreleaser release --clean
+version: 2
+
+project_name: bk
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: bk
+    main: .
+    binary: bk
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Windows/arm64 与 amd64 均保留；如需裁剪可在此 ignore。
+    ldflags:
+      - -s -w
+      - -X pkg.blksails.net/bk/cmd.version={{ .Version }}
+      - -X pkg.blksails.net/bk/cmd.commit={{ .Commit }}
+      - -X pkg.blksails.net/bk/cmd.date={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: bk
+    formats: [tar.gz]
+    # Windows 使用 zip，更通用。
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - src: docs/**
+        info:
+          # 允许 docs 目录为空或仅含顶层文件时不报错。
+          mode: 0644
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  use: git
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  draft: false
+  prerelease: auto
+  name_template: "bk {{ .Tag }}"
+
+# Homebrew / nfpm（deb/rpm）等分发渠道可按需开启，默认关闭以保持最小可用配置。
