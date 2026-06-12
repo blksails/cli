@@ -4,25 +4,32 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
+
+	"pkg.blksails.net/bk/internal/dokku"
 )
 
 // fakeLogReader 以可注入的桩满足 appLogReader，记录调用并返回预置结果，
 // 使 runAppLogs 无需真实 SSH/Dokku 即可被验证。
 type fakeLogReader struct {
-	called bool
-	gotApp string
-	gotNum int
-	out    string
-	err    error
+	called  bool
+	gotApp  string
+	gotOpts dokku.LogsOptions
+	out     string
+	err     error
 }
 
-func (f *fakeLogReader) Logs(_ context.Context, app string, num int) (string, error) {
+func (f *fakeLogReader) Logs(_ context.Context, w io.Writer, app string, opts dokku.LogsOptions) error {
 	f.called = true
 	f.gotApp = app
-	f.gotNum = num
-	return f.out, f.err
+	f.gotOpts = opts
+	if f.err != nil {
+		return f.err
+	}
+	_, err := io.WriteString(w, f.out)
+	return err
 }
 
 // 默认快照（numSet=false）：以默认 num（0，含义为“无 -n 限制”）调用 Logs，
@@ -30,7 +37,7 @@ func (f *fakeLogReader) Logs(_ context.Context, app string, num int) (string, er
 func TestRunAppLogs_DefaultSnapshot(t *testing.T) {
 	f := &fakeLogReader{out: "line-a\nline-b\n"}
 	var buf bytes.Buffer
-	if err := runAppLogs(context.Background(), &buf, f, "myapp", 0, false); err != nil {
+	if err := runAppLogs(context.Background(), &buf, f, "myapp", dokku.LogsOptions{}, false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !f.called {
@@ -39,8 +46,8 @@ func TestRunAppLogs_DefaultSnapshot(t *testing.T) {
 	if f.gotApp != "myapp" {
 		t.Fatalf("app = %q, want myapp", f.gotApp)
 	}
-	if f.gotNum != 0 {
-		t.Fatalf("num = %d, want 0 (default snapshot)", f.gotNum)
+	if f.gotOpts.Num != 0 {
+		t.Fatalf("num = %d, want 0 (default snapshot)", f.gotOpts.Num)
 	}
 	if got := buf.String(); got != "line-a\nline-b\n" {
 		t.Fatalf("output = %q, want verbatim snapshot", got)
@@ -51,17 +58,33 @@ func TestRunAppLogs_DefaultSnapshot(t *testing.T) {
 func TestRunAppLogs_LimitLines(t *testing.T) {
 	f := &fakeLogReader{out: "snap"}
 	var buf bytes.Buffer
-	if err := runAppLogs(context.Background(), &buf, f, "myapp", 5, true); err != nil {
+	if err := runAppLogs(context.Background(), &buf, f, "myapp", dokku.LogsOptions{Num: 5}, true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !f.called {
 		t.Fatal("expected Logs to be called")
 	}
-	if f.gotNum != 5 {
-		t.Fatalf("num = %d, want 5", f.gotNum)
+	if f.gotOpts.Num != 5 {
+		t.Fatalf("num = %d, want 5", f.gotOpts.Num)
 	}
 	if buf.String() != "snap" {
 		t.Fatalf("output = %q, want verbatim snapshot", buf.String())
+	}
+}
+
+// 完整选项透传：-p/-q/-t 与 -n 一并落入 dokku.LogsOptions 并原样传给 Logs。
+func TestRunAppLogs_AllOptionsForwarded(t *testing.T) {
+	f := &fakeLogReader{out: "streamed"}
+	var buf bytes.Buffer
+	opts := dokku.LogsOptions{Num: 20, Process: "worker", Quiet: true, Tail: true}
+	if err := runAppLogs(context.Background(), &buf, f, "myapp", opts, true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f.gotOpts != opts {
+		t.Fatalf("opts = %+v, want %+v", f.gotOpts, opts)
+	}
+	if buf.String() != "streamed" {
+		t.Fatalf("output = %q, want verbatim", buf.String())
 	}
 }
 
@@ -70,7 +93,7 @@ func TestRunAppLogs_NonPositiveNum(t *testing.T) {
 	for _, num := range []int{0, -3} {
 		f := &fakeLogReader{out: "should-not-show"}
 		var buf bytes.Buffer
-		err := runAppLogs(context.Background(), &buf, f, "myapp", num, true)
+		err := runAppLogs(context.Background(), &buf, f, "myapp", dokku.LogsOptions{Num: num}, true)
 		if err == nil {
 			t.Fatalf("num=%d: expected error for non-positive line count", num)
 		}
@@ -91,7 +114,7 @@ func TestRunAppLogs_LogsError(t *testing.T) {
 	sentinel := errors.New("dokku: app not found")
 	f := &fakeLogReader{err: sentinel}
 	var buf bytes.Buffer
-	err := runAppLogs(context.Background(), &buf, f, "ghost", 0, false)
+	err := runAppLogs(context.Background(), &buf, f, "ghost", dokku.LogsOptions{}, false)
 	if err == nil {
 		t.Fatal("expected error to be propagated")
 	}
@@ -114,10 +137,18 @@ func TestAppLogsCmd_Wiring(t *testing.T) {
 	if err := appLogsCmd.Args(appLogsCmd, []string{"myapp"}); err != nil {
 		t.Fatalf("unexpected error with 1 arg: %v", err)
 	}
-	if appLogsCmd.Flags().Lookup("num") == nil {
-		t.Fatal("appLogsCmd should have --num flag")
-	}
-	if appLogsCmd.Flags().ShorthandLookup("n") == nil {
-		t.Fatal("appLogsCmd should have -n shorthand")
+	// 与 dokku logs 对齐的全部标志及其短选项均需接线。
+	for _, tc := range []struct{ long, short string }{
+		{"num", "n"},
+		{"ps", "p"},
+		{"quiet", "q"},
+		{"tail", "t"},
+	} {
+		if appLogsCmd.Flags().Lookup(tc.long) == nil {
+			t.Fatalf("appLogsCmd should have --%s flag", tc.long)
+		}
+		if appLogsCmd.Flags().ShorthandLookup(tc.short) == nil {
+			t.Fatalf("appLogsCmd should have -%s shorthand", tc.short)
+		}
 	}
 }

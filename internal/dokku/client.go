@@ -7,6 +7,7 @@ package dokku
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"pkg.blksails.net/bk/internal/sshx"
@@ -47,17 +48,21 @@ func (c *Client) Close() error { return c.ssh.Close() }
 // Run 执行一条 dokku 命令并返回标准输出。args 为 dokku 子命令及参数，
 // 例如 Run(ctx, "apps:create", "myapp")。
 func (c *Client) Run(ctx context.Context, args ...string) (string, error) {
-	remote := args
-	if c.cfg.Sudo {
-		// 普通管理员账号经 `sudo dokku <子命令>` 执行（Requirement 11.3 / design 行 239）。
-		// 非 sudo 路径发送裸 args，对应 dokku 用户的强制命令模型。
-		remote = append([]string{"sudo", "dokku"}, args...)
-	}
-	res, err := c.ssh.RunArgs(ctx, remote...)
+	res, err := c.ssh.RunArgs(ctx, c.remoteArgs(args)...)
 	if err != nil {
 		return res.Stdout, fmt.Errorf("dokku %s: %w", strings.Join(args, " "), err)
 	}
 	return res.Stdout, nil
+}
+
+// remoteArgs 依据 Sudo 配置决定远端实际执行的参数序列。
+// 普通管理员账号经 `sudo dokku <子命令>` 执行（Requirement 11.3 / design 行 239）；
+// 非 sudo 路径发送裸 args，对应 dokku 用户的强制命令模型。
+func (c *Client) remoteArgs(args []string) []string {
+	if c.cfg.Sudo {
+		return append([]string{"sudo", "dokku"}, args...)
+	}
+	return args
 }
 
 // AppsList 返回应用名列表。
@@ -143,11 +148,51 @@ func (c *Client) PsRestart(ctx context.Context, app string) (string, error) {
 	return c.Run(ctx, "ps:restart", app)
 }
 
-// Logs 返回应用日志快照；num>0 时限制返回行数。
-func (c *Client) Logs(ctx context.Context, app string, num int) (string, error) {
+// LogsOptions 承载 dokku `logs` 命令的全部可选参数，与远端 dokku 的标志一一对应：
+//
+//	Num     -n/--num NUM     仅显示最近 N 行；<=0 表示不加 --num（dokku 默认快照）
+//	Process -p/--ps PROCESS  仅显示指定进程类型（如 web/worker）的日志
+//	Quiet   -q/--quiet       原始日志（去掉颜色、时间戳与进程名前缀）
+//	Tail    -t/--tail        持续流式输出，直到 ctx 取消或远端结束
+type LogsOptions struct {
+	Num     int
+	Process string
+	Quiet   bool
+	Tail    bool
+}
+
+// logsArgs 依据 opts 组装 dokku logs 的参数序列。标志顺序固定，便于测试断言。
+func logsArgs(app string, opts LogsOptions) []string {
 	args := []string{"logs", app}
-	if num > 0 {
-		args = append(args, "--num", fmt.Sprintf("%d", num))
+	if opts.Num > 0 {
+		args = append(args, "--num", fmt.Sprintf("%d", opts.Num))
 	}
-	return c.Run(ctx, args...)
+	if opts.Process != "" {
+		args = append(args, "--ps", opts.Process)
+	}
+	if opts.Quiet {
+		args = append(args, "--quiet")
+	}
+	if opts.Tail {
+		args = append(args, "--tail")
+	}
+	return args
+}
+
+// Logs 读取应用日志并写入 w。
+//
+// opts.Tail=false 时取当前快照：缓冲读取后一次性写入 w（与历史行为一致，
+// num>0 限制最近 N 行）。opts.Tail=true 时持续流式写入 w，直到 ctx 取消
+// （如用户中断）或远端结束——此路径绕过缓冲，把远端 stdout 实时透传。
+func (c *Client) Logs(ctx context.Context, w io.Writer, app string, opts LogsOptions) error {
+	args := logsArgs(app, opts)
+	if opts.Tail {
+		return c.ssh.RunStream(ctx, w, c.remoteArgs(args)...)
+	}
+	out, err := c.Run(ctx, args...)
+	if err != nil {
+		return err
+	}
+	_, err = io.WriteString(w, out)
+	return err
 }

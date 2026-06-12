@@ -230,10 +230,18 @@ func runApp(t *testing.T, cfgPath string, args ...string) (stdout, stderr string
 	profile = "default"
 	appSudo = false
 	appRaw = false
+	appLogsNum = 0
+	appLogsPs = ""
+	appLogsQuiet = false
+	appLogsTail = false
 	resetFlag(rootCmd, "config")
 	resetFlag(rootCmd, "profile")
 	resetFlag(appCmd, "sudo")
 	resetFlag(appCmd, "raw")
+	resetFlag(appLogsCmd, "num")
+	resetFlag(appLogsCmd, "ps")
+	resetFlag(appLogsCmd, "quiet")
+	resetFlag(appLogsCmd, "tail")
 
 	var outBuf, errBuf bytes.Buffer
 	rootCmd.SetOut(&outBuf)

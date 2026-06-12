@@ -37,6 +37,46 @@ func (c *Client) RunArgsStdin(ctx context.Context, stdin io.Reader, args ...stri
 	return c.run(ctx, ShellJoin(args), stdin)
 }
 
+// RunStream 安全拼接命令与参数后执行，并把远端 stdout 实时写入 w（不缓冲），
+// 适用于 `dokku logs --tail` 等持续输出的命令。stderr 仍缓冲，仅用于失败时的
+// 错误信息。ctx 取消时主动关闭会话以中断流式执行（如用户 Ctrl-C）。
+func (c *Client) RunStream(ctx context.Context, w io.Writer, args ...string) error {
+	return c.runStream(ctx, ShellJoin(args), w)
+}
+
+// runStream 是 RunStream 的会话执行逻辑：把远端 stdout 直连到 w 实时输出，
+// stderr 缓冲，并以 ctx 取消时主动关闭会话来中断执行。
+func (c *Client) runStream(ctx context.Context, command string, w io.Writer) error {
+	session, err := c.conn.NewSession()
+	if err != nil {
+		return fmt.Errorf("sshx: 创建会话失败: %w", err)
+	}
+	defer session.Close()
+
+	var stderr bytes.Buffer
+	session.Stdout = w
+	session.Stderr = &stderr
+
+	done := make(chan error, 1)
+	go func() { done <- session.Run(command) }()
+
+	select {
+	case <-ctx.Done():
+		_ = session.Signal(ssh.SIGKILL)
+		_ = session.Close()
+		return ctx.Err()
+	case err := <-done:
+		if err != nil {
+			msg := strings.TrimSpace(stderr.String())
+			if msg != "" {
+				return fmt.Errorf("%w: %s", err, msg)
+			}
+			return err
+		}
+		return nil
+	}
+}
+
 // run 是 Run / RunArgsStdin 共享的会话执行逻辑：开会话、捕获 stdout/stderr、
 // 可选设置 stdin，并以 ctx 取消时主动关闭会话来中断执行。
 func (c *Client) run(ctx context.Context, command string, stdin io.Reader) (Result, error) {

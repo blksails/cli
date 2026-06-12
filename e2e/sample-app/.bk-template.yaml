@@ -1,0 +1,19 @@
+# bk 应用模板清单（app-templates spec 的 manifest 草案）。
+# generate 阶段（bk app new）会按本清单 clone 本仓库到本地、用变量替换渲染 files 列出的文件。
+# 当前 e2e 测试系统以进程内渲染（cmd/lifecycle_e2e_test.go 的 scaffoldSampleApp）等价模拟，
+# 待 app-templates 落地后由真实命令消费本清单。
+name: go-min
+language: go
+description: 最小 Go HTTP 应用，监听 $PORT，带 / 与 /healthz。
+
+# 可替换变量及默认值。
+variables:
+  - name: AppName
+    description: 应用名（同时用于 Dokku app 名与运行时 APP_NAME）
+    default: bk-e2e-sample
+
+# 需做变量替换的文件（glob，相对模板根）。
+files:
+  - main.go
+  - app.json
+  - Procfile
