@@ -221,7 +221,7 @@ func TestSSHKeyLifecycle_EndToEnd(t *testing.T) {
 
 	// ---- 步骤 3：install（管理员）----
 	var installBuf bytes.Buffer
-	if err := runSSHKeyInstall(ctx, &installBuf, store, dokku, adminID); err != nil {
+	if err := runSSHKeyInstall(ctx, &installBuf, store, dokku, adminID, nil, true); err != nil {
 		t.Fatalf("runSSHKeyInstall 失败：%v", err)
 	}
 	allOutputs = append(allOutputs, installBuf.String())

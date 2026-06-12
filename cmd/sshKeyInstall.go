@@ -54,7 +54,7 @@ type keyInstaller interface {
 //
 // adminID 为当前会话身份的 uid，落库为 installed_by 供审计（Requirement 10.3）。
 // 输出仅使用名称与汇总信息，绝不打印公钥/私钥（KeyRecord 亦不含私钥，Requirement 10.2/10.4）。
-func runSSHKeyInstall(ctx context.Context, w io.Writer, store pendingStore, inst keyInstaller, adminID string) error {
+func runSSHKeyInstall(ctx context.Context, w io.Writer, store pendingStore, inst keyInstaller, adminID string, selectors []string, all bool) error {
 	pend, err := store.ListPending()
 	if err != nil {
 		if errors.Is(err, sshkeys.ErrPermission) {
@@ -68,12 +68,23 @@ func runSSHKeyInstall(ctx context.Context, w io.Writer, store pendingStore, inst
 		return nil
 	}
 
+	// 选择要代装的目标。安全默认（既不指定 <名称|指纹> 也不带 --all）：仅列出全部
+	// pending 供管理员逐条审核，不代装任何一条——避免「一把梭」把所有 pending 无差别
+	// 获批（任何能登录 + provision 的人都不应被自动放行进 Dokku）。
+	targets, listedOnly, selErr := selectInstallTargets(w, pend, selectors, all)
+	if selErr != nil {
+		return selErr
+	}
+	if listedOnly {
+		return nil
+	}
+
 	var (
 		success  int
 		failures []string // 形如 "<name>: <原因>"
 	)
 
-	for _, rec := range pend {
+	for _, rec := range targets {
 		// 幂等前置：先移除同名条目，忽略 not-found 等错误（名称可能尚不存在）。
 		_, _ = inst.SSHKeysRemove(ctx, rec.Name)
 
@@ -101,6 +112,48 @@ func runSSHKeyInstall(ctx context.Context, w io.Writer, store pendingStore, inst
 	return nil
 }
 
+// selectInstallTargets 依据 selectors 与 all 从 pending 列表挑出本次要代装的记录。
+// 返回 (targets, listedOnly, err)：
+//   - all=true → 全部 pending。
+//   - 指定了 <名称|指纹> → 仅精确匹配（按 Name 或 Fingerprint）的 pending；无任一匹配则报错。
+//   - 两者皆无 → 安全默认：把全部 pending 列出供审核，listedOnly=true（本次不代装任何）。
+//
+// 这是「不要无差别代装所有 pending」的安全闸门：管理员必须显式选择某条或显式 --all，
+// 防止任意已登录用户经 provision 写入的 pending 被自动放行进 Dokku。
+func selectInstallTargets(w io.Writer, pend []sshkeys.KeyRecord, selectors []string, all bool) (targets []sshkeys.KeyRecord, listedOnly bool, err error) {
+	if all {
+		return pend, false, nil
+	}
+	if len(selectors) > 0 {
+		matched := make(map[string]bool, len(selectors))
+		for _, rec := range pend {
+			for _, sel := range selectors {
+				if rec.Name == sel || rec.Fingerprint == sel {
+					targets = append(targets, rec)
+					matched[sel] = true
+					break
+				}
+			}
+		}
+		for _, sel := range selectors {
+			if !matched[sel] {
+				fmt.Fprintf(w, "跳过：未找到待代装(pending)记录匹配 %q。\n", sel)
+			}
+		}
+		if len(targets) == 0 {
+			return nil, false, fmt.Errorf("没有匹配的待代装公钥；运行 `bk ssh-key install`（不带参数）可查看全部 pending")
+		}
+		return targets, false, nil
+	}
+	// 安全默认：仅列出 pending 供审核，不代装任何一条。
+	fmt.Fprintf(w, "共有 %d 条待代装(pending)公钥，请审核后指定要代装的 <名称|指纹>，或用 --all 代装全部：\n", len(pend))
+	for _, rec := range pend {
+		fmt.Fprintf(w, "  - %s  %s  host=%s\n", rec.Name, rec.Fingerprint, rec.Host)
+	}
+	fmt.Fprintln(w, "示例： bk ssh-key install <名称>    或    bk ssh-key install --all")
+	return nil, true, nil
+}
+
 // currentSessionUID 返回当前生效 profile 的会话用户 uid（auth.uid()），用作 installed_by。
 // 复用 whoami.go 的 lookupProfile 从 auth.json 读取会话；缺失会话返回引导登录错误，使
 // install 不会以空 by 回写（Requirement 7.1/10.3）。
@@ -114,12 +167,19 @@ func currentSessionUID(profile string) (string, error) {
 
 // sshKeyInstallCmd 是 `bk ssh-key install`（管理员代装）。装配真实 Store + dokku.Client 与
 // 当前会话 uid 后委托 runSSHKeyInstall。用 RunE 使权限/连接错误以非零退出（Requirement 7.1）。
+var sshKeyInstallAll bool
+
 var sshKeyInstallCmd = &cobra.Command{
-	Use:   "install",
-	Short: "（管理员）把 pending 公钥代装到 Dokku 并回写 installed",
-	Long: `读取状态为 pending 的公钥登记，借管理员既有的 SSH 接入在 Dokku 主机上为每条记录
+	Use:   "install [<指纹|名称>...]",
+	Short: "（管理员）把指定的（或 --all 全部）pending 公钥代装到 Dokku 并回写 installed",
+	Long: `读取状态为 pending 的公钥登记，借管理员既有的 SSH 接入在 Dokku 主机上为指定记录
 执行 ssh-keys 添加（先移除同名再添加，幂等），成功后把该记录回写为 installed 并记录
 安装者与安装时间。
+
+选择要代装哪些（默认不做无差别代装，避免任意 provision 的 pending 被自动放行）：
+- 指定一个或多个 <名称|指纹>：仅代装精确匹配的 pending 记录。
+- --all：代装全部 pending。
+- 不带任何参数且不带 --all：仅列出全部 pending 供审核，不代装任何一条。
 
 行为：
 - 非管理员被 RLS 拒绝时提示需要管理员权限并以非零退出码结束。
@@ -130,8 +190,10 @@ var sshKeyInstallCmd = &cobra.Command{
 输出不包含任何私钥内容。
 
 示例用法：
-  bk ssh-key install
-  bk ssh-key install --sudo`,
+  bk ssh-key install                       # 列出全部 pending 供审核（不代装）
+  bk ssh-key install bk-alice-1-2-3-4 --sudo   # 仅代装指定名称
+  bk ssh-key install SHA256:xxxx --sudo        # 仅代装指定指纹
+  bk ssh-key install --all --sudo              # 代装全部 pending`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := newSSHKeyStore(profile)
 		if err != nil {
@@ -146,10 +208,12 @@ var sshKeyInstallCmd = &cobra.Command{
 			return err
 		}
 		defer inst.Close()
-		return runSSHKeyInstall(cmd.Context(), os.Stdout, store, inst, adminID)
+		return runSSHKeyInstall(cmd.Context(), os.Stdout, store, inst, adminID, args, sshKeyInstallAll)
 	},
 }
 
 func init() {
+	sshKeyInstallCmd.Flags().BoolVar(&sshKeyInstallAll, "all", false,
+		"代装全部 pending 公钥（默认需指定 <名称|指纹>，或用本标志显式代装全部）")
 	sshKeyCmd.AddCommand(sshKeyInstallCmd)
 }

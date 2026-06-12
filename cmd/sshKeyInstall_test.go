@@ -72,7 +72,7 @@ func TestRunSSHKeyInstall_PermissionDenied(t *testing.T) {
 	inst := &fakeKeyInstaller{}
 	var buf bytes.Buffer
 
-	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid")
+	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid", nil, true)
 	if err == nil {
 		t.Fatalf("期望非 nil 错误（非管理员被拒），实际 nil")
 	}
@@ -90,7 +90,7 @@ func TestRunSSHKeyInstall_Empty(t *testing.T) {
 	inst := &fakeKeyInstaller{}
 	var buf bytes.Buffer
 
-	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid")
+	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid", nil, true)
 	if err != nil {
 		t.Fatalf("空列表应零退出（nil error），实际：%v", err)
 	}
@@ -117,7 +117,7 @@ func TestRunSSHKeyInstall_PartialFailure(t *testing.T) {
 	}
 	var buf bytes.Buffer
 
-	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid")
+	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid", nil, true)
 	if err != nil {
 		t.Fatalf("单条失败不应使整体出错，实际：%v", err)
 	}
@@ -159,7 +159,7 @@ func TestRunSSHKeyInstall_RemoveErrorIgnored(t *testing.T) {
 	}
 	var buf bytes.Buffer
 
-	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid")
+	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid", nil, true)
 	if err != nil {
 		t.Fatalf("Remove 错误应被忽略，实际整体出错：%v", err)
 	}
@@ -168,5 +168,97 @@ func TestRunSSHKeyInstall_RemoveErrorIgnored(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "成功 1") {
 		t.Fatalf("应汇总 成功 1，实际：%q", buf.String())
+	}
+}
+
+// twoPending 构造两条 pending（alice/bob）供选择性代装测试复用。
+func twoPending() *fakePendingStore {
+	return &fakePendingStore{
+		pending: []sshkeys.KeyRecord{
+			{ID: "id-a", Name: "bk-alice-host", Fingerprint: "SHA256:AAAA", Host: "h1", PublicKey: "ssh-ed25519 AAAA alice"},
+			{ID: "id-b", Name: "bk-bob-host", Fingerprint: "SHA256:BBBB", Host: "h1", PublicKey: "ssh-ed25519 BBBB bob"},
+		},
+	}
+}
+
+// TestRunSSHKeyInstall_NoSelectorListsOnly 是安全闸门核心：既不指定 <名称|指纹> 也不带 --all 时，
+// 不得代装任何一条，只列出 pending 供审核（避免无差别放行任意 provision 的 pending）。
+func TestRunSSHKeyInstall_NoSelectorListsOnly(t *testing.T) {
+	store := twoPending()
+	inst := &fakeKeyInstaller{}
+	var buf bytes.Buffer
+
+	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid", nil, false)
+	if err != nil {
+		t.Fatalf("仅列出不应返回错误，实际：%v", err)
+	}
+	if len(inst.calls) != 0 {
+		t.Fatalf("不指定且无 --all 时不得对 Dokku 做任何 Add/Remove，实际调用：%v", inst.calls)
+	}
+	if len(store.marked) != 0 {
+		t.Fatalf("不指定且无 --all 时不得回写 installed，实际：%v", store.marked)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "bk-alice-host") || !strings.Contains(out, "bk-bob-host") {
+		t.Fatalf("应列出全部 pending 供审核，实际：%q", out)
+	}
+	if !strings.Contains(out, "--all") {
+		t.Fatalf("应提示可用 --all 代装全部，实际：%q", out)
+	}
+	if strings.Contains(out, "已安装") || strings.Contains(out, "代装完成") {
+		t.Fatalf("仅列出时不应出现代装汇总，实际：%q", out)
+	}
+}
+
+// TestRunSSHKeyInstall_SelectorByName 验证按名称精确选择：仅代装匹配的那条，其余 pending 不被触碰。
+func TestRunSSHKeyInstall_SelectorByName(t *testing.T) {
+	store := twoPending()
+	inst := &fakeKeyInstaller{}
+	var buf bytes.Buffer
+
+	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid", []string{"bk-alice-host"}, false)
+	if err != nil {
+		t.Fatalf("按名称代装不应出错，实际：%v", err)
+	}
+	if got := store.marked["id-a"]; got != "admin-uid" {
+		t.Fatalf("被选中的 alice 应回写 installed，实际 by=%q", got)
+	}
+	if _, ok := store.marked["id-b"]; ok {
+		t.Fatalf("未被选中的 bob 不应被代装/回写，实际已回写")
+	}
+	if strings.Join(inst.calls, ",") != "remove:bk-alice-host,add:bk-alice-host" {
+		t.Fatalf("应只对 alice 执行 remove+add，实际：%v", inst.calls)
+	}
+}
+
+// TestRunSSHKeyInstall_SelectorByFingerprint 验证按指纹精确选择，与按名称等价。
+func TestRunSSHKeyInstall_SelectorByFingerprint(t *testing.T) {
+	store := twoPending()
+	inst := &fakeKeyInstaller{}
+	var buf bytes.Buffer
+
+	if err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid", []string{"SHA256:BBBB"}, false); err != nil {
+		t.Fatalf("按指纹代装不应出错，实际：%v", err)
+	}
+	if _, ok := store.marked["id-a"]; ok {
+		t.Fatalf("未被选中的 alice 不应被代装")
+	}
+	if got := store.marked["id-b"]; got != "admin-uid" {
+		t.Fatalf("按指纹选中的 bob 应回写 installed，实际 by=%q", got)
+	}
+}
+
+// TestRunSSHKeyInstall_UnknownSelector 验证：选择器无任何匹配时返回错误且不代装任何一条。
+func TestRunSSHKeyInstall_UnknownSelector(t *testing.T) {
+	store := twoPending()
+	inst := &fakeKeyInstaller{}
+	var buf bytes.Buffer
+
+	err := runSSHKeyInstall(context.Background(), &buf, store, inst, "admin-uid", []string{"nope"}, false)
+	if err == nil {
+		t.Fatalf("无匹配选择器应返回错误")
+	}
+	if len(inst.calls) != 0 || len(store.marked) != 0 {
+		t.Fatalf("无匹配时不得代装任何一条，实际 calls=%v marked=%v", inst.calls, store.marked)
 	}
 }
