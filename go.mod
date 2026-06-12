@@ -12,7 +12,7 @@ require (
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.52.0
 	golang.org/x/term v0.43.0
-	pkg.blksails.net/yamuxproxy v0.0.0-20260415093516-fa7569687c62
+	pkg.blksails.net/yamuxproxy v0.1.0
 )
 
 require (
