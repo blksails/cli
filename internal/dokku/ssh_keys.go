@@ -17,7 +17,10 @@ func (c *Client) SSHKeysAdd(ctx context.Context, name, publicKey string) (string
 	if c.cfg.Sudo {
 		remote = append([]string{"sudo", "dokku"}, args...)
 	}
-	res, err := c.ssh.RunArgsStdin(ctx, strings.NewReader(publicKey), remote...)
+	// dokku 的 ssh-keys:add 经 stdin 读取公钥时要求该行以换行结尾；缺结尾换行会导致
+	// 命令静默失败（exit 1、无任何 stdout/stderr）。故确保结尾恰有一个换行。
+	key := strings.TrimRight(publicKey, "\n") + "\n"
+	res, err := c.ssh.RunArgsStdin(ctx, strings.NewReader(key), remote...)
 	if err != nil {
 		return res.Stdout, fmt.Errorf("dokku %s: %w", strings.Join(args, " "), err)
 	}

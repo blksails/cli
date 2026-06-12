@@ -203,8 +203,10 @@ func TestSSHKeysAddCommandAndStdin(t *testing.T) {
 	if strings.TrimSpace(cmd) != "ssh-keys:add bk-test" {
 		t.Fatalf("非 Sudo 命令应为裸 'ssh-keys:add bk-test'（无前缀），实际: %q", cmd)
 	}
-	if stdin != testPubKey {
-		t.Fatalf("stdin 公钥透传不符: 期望 %q，实际 %q", testPubKey, stdin)
+	// dokku ssh-keys:add 经 stdin 读公钥时要求结尾有换行（缺则静默 exit 1），故 SSHKeysAdd
+	// 保证恰好一个结尾换行。
+	if stdin != testPubKey+"\n" {
+		t.Fatalf("stdin 公钥应以单个换行结尾: 期望 %q，实际 %q", testPubKey+"\n", stdin)
 	}
 }
 
@@ -229,8 +231,42 @@ func TestSSHKeysAddSudoPrefix(t *testing.T) {
 	if strings.TrimSpace(cmd) != "sudo dokku ssh-keys:add bk-test" {
 		t.Fatalf("Sudo 命令应为 'sudo dokku ssh-keys:add bk-test'，实际: %q", cmd)
 	}
-	if stdin != testPubKey {
-		t.Fatalf("Sudo 路径下 stdin 公钥透传不符: 期望 %q，实际 %q", testPubKey, stdin)
+	if stdin != testPubKey+"\n" {
+		t.Fatalf("Sudo 路径下 stdin 公钥应以单个换行结尾: 期望 %q，实际 %q", testPubKey+"\n", stdin)
+	}
+}
+
+// TestSSHKeysAddStdinTrailingNewline 是换行回归测试：dokku 的 ssh-keys:add 经 stdin 读公钥时
+// 要求该行以换行结尾，缺则命令静默失败（exit 1、无 stdout/stderr）。SSHKeysAdd 须保证结尾恰
+// 有一个换行——无论入参是否自带换行，都不缺失、不重复。
+func TestSSHKeysAddStdinTrailingNewline(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+	}{
+		{"无结尾换行", testPubKey},
+		{"已带一个换行", testPubKey + "\n"},
+		{"带多个换行", testPubKey + "\n\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cap := &capturedExec{}
+			addr, stop := startCaptureSSHServer(t, cap, false, "")
+			defer stop()
+
+			c := newTestClient(t, addr, false)
+			defer c.Close()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if _, err := c.SSHKeysAdd(ctx, "bk-test", tc.in); err != nil {
+				t.Fatalf("SSHKeysAdd 执行失败: %v", err)
+			}
+			_, stdin := cap.get()
+			if stdin != testPubKey+"\n" {
+				t.Fatalf("入参 %q 时 stdin 应规整为单个结尾换行: 期望 %q，实际 %q", tc.in, testPubKey+"\n", stdin)
+			}
+		})
 	}
 }
 
