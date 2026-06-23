@@ -109,7 +109,7 @@ bk doctor
 | Flag | 说明 | 默认值 |
 | --- | --- | --- |
 | `--config` | 配置文件路径 | 自动查找 `.bs.yaml` |
-| `--api-endpoint` | API 端点 | `https://api.bk.blksails.cn` |
+| `--api-endpoint` | API 端点 | `https://supabase.blksails.cn` |
 | `--api-key` | API 密钥 | — |
 | `--profile` | 配置档名称 | `default` |
 

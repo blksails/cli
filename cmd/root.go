@@ -53,7 +53,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "配置文件路径 (默认在主目录与当前目录查找 .bs.yaml)")
 	// api endpoint
-	rootCmd.PersistentFlags().StringVar(&apiEndpoint, "api-endpoint", "https://api.bk.blksails.cn", "API 端点")
+	rootCmd.PersistentFlags().StringVar(&apiEndpoint, "api-endpoint", "https://supabase.blksails.cn", "API 端点")
 	// api key
 	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "API 密钥")
 	// viper config api_endpoint
