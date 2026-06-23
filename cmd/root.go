@@ -25,7 +25,7 @@ var (
 // role=anon、受 RLS 约束，设计上即可公开（与前端浏览器包内联的同一把），仅作为默认值
 // 让 CLI 开箱即用；可被 --api-key / BK_API_KEY / .bs.yaml 覆盖。它不是用户身份凭据——
 // 用户身份由 `bk auth login` 产生的会话承载。
-const defaultAPIKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICJyb2xlIjogImFub24iLAogICJpc3MiOiAic3VwYWJhc2UiLAogICJpYXQiOiAxNzMzOTMyODAwLAogICJleHAiOiAxODkxNjk5MjAwCn0.VUueZJMeKh8AdrhgxYreDB9YvWneNWx_pdojvlSF8Ew"
+const defaultAPIKey = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzcxOTE4MDIzLCJleHAiOjEzMjgyNTU4MDIzfQ.KKmVibxmRTLp7TyvjHbjn2fhW_gCzvkG-5uzi2pAOEI"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
