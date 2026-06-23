@@ -39,7 +39,7 @@
 | 键 | 含义 | 默认值 | 说明 |
 |----|------|--------|------|
 | `api_endpoint` | Supabase / API 端点地址 | `https://supabase.blksails.cn` | 也可用 `--api-endpoint` 标志覆盖；标志默认值即此值（`cmd/root.go` 的 `StringVar(..., "api-endpoint", "https://supabase.blksails.cn", ...)`，绑定到 viper key `api_endpoint`）。 |
-| `api_key` | API 密钥（Supabase anon / api key） | 无（空） | 也可用 `--api-key` 标志覆盖，绑定到 viper key `api_key`。**注意安全：** 该值是 Supabase anon/api key，属于敏感凭据；不要把含真实密钥的 `.bs.yaml` 提交到版本库或共享给他人。 |
+| `api_key` | API 密钥（Supabase anon key） | 内置生产 anon key | 标志默认值即生产 Supabase 的 **anon（public）key**（`role=anon`，受 RLS 行级安全约束，与前端浏览器包内联的同一把），使 `bk auth login` 开箱即用。可用 `--api-key` 标志、`BK_API_KEY` 环境变量或 `.bs.yaml` 覆盖以指向其它项目。**注意：** 切勿把 `service_role` key 填到此处（它绕过 RLS）；用户身份由登录会话承载，与此公钥无关。 |
 
 来源：`cmd/root.go` 的标志定义与 `viper.BindPFlag("api_endpoint", ...)`、`viper.BindPFlag("api_key", ...)`，以及 `DefaultClient()` 中 `viper.GetString("api_endpoint")` / `viper.GetString("api_key")`。
 

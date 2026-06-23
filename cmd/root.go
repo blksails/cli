@@ -21,6 +21,12 @@ var (
 	schema      string = "blacksail"
 )
 
+// defaultAPIKey 是生产 Supabase（https://supabase.blksails.cn）的 anon（public）key。
+// role=anon、受 RLS 约束，设计上即可公开（与前端浏览器包内联的同一把），仅作为默认值
+// 让 CLI 开箱即用；可被 --api-key / BK_API_KEY / .bs.yaml 覆盖。它不是用户身份凭据——
+// 用户身份由 `bk auth login` 产生的会话承载。
+const defaultAPIKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICJyb2xlIjogImFub24iLAogICJpc3MiOiAic3VwYWJhc2UiLAogICJpYXQiOiAxNzMzOTMyODAwLAogICJleHAiOiAxODkxNjk5MjAwCn0.VUueZJMeKh8AdrhgxYreDB9YvWneNWx_pdojvlSF8Ew"
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:     "bk",
@@ -55,7 +61,11 @@ func init() {
 	// api endpoint
 	rootCmd.PersistentFlags().StringVar(&apiEndpoint, "api-endpoint", "https://supabase.blksails.cn", "API 端点")
 	// api key
-	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "API 密钥")
+	// 默认值为生产 Supabase 的 anon（public）key：role=anon，受 RLS 行级安全约束，
+	// 设计上即可公开（与 webapp 内联在浏览器包中的 NEXT_PUBLIC_SUPABASE_ANON_KEY 相同），
+	// 使 `bk auth login` 开箱即用。真正的用户身份由登录会话承载，与此公钥无关。
+	// 如需指向其它项目，用 --api-key 标志、BK_API_KEY 环境变量或 .bs.yaml 覆盖。
+	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", defaultAPIKey, "API 密钥")
 	// viper config api_endpoint
 	rootCmd.PersistentFlags().StringVar(&profile, "profile", "default", "配置文件名称")
 

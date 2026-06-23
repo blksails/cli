@@ -110,7 +110,7 @@ bk doctor
 | --- | --- | --- |
 | `--config` | 配置文件路径 | 自动查找 `.bs.yaml` |
 | `--api-endpoint` | API 端点 | `https://supabase.blksails.cn` |
-| `--api-key` | API 密钥 | — |
+| `--api-key` | API 密钥（Supabase anon key） | 内置生产 anon key（可覆盖） |
 | `--profile` | 配置档名称 | `default` |
 
 更多配置细节见 [`docs/config.md`](docs/config.md)。
