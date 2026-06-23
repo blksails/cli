@@ -49,11 +49,14 @@
 
 | 键 | 含义 | 是否必填 | 默认值 | 映射目标（`sshx.Config`） |
 |----|------|----------|--------|---------------------------|
-| `ssh.host` | SSH 主机地址 | **必填** | 无 | `Host` |
+| `ssh.host` | SSH 主机地址 | 二选一¹ | 无 | `Host` |
+| `ssh.host_name` | 在线主机目录中按名选择 | 可选 | 无 | —（用于选择缓存记录） |
 | `ssh.user` | SSH 登录用户 | 可选 | 留空（**不** 默认为 `root`） | `User` |
 | `ssh.port` | SSH 端口 | 可选 | `22` | `Port` |
 | `ssh.identity` | 私钥文件路径 | 可选 | 无（空） | `IdentityFile` |
 | `ssh.insecure` | 是否跳过主机密钥校验 | 可选 | `false` | `Insecure` |
+
+> ¹ `ssh.host` 与「在线主机目录」二选一：本地配了 `ssh.host` 即用本地；未配则登录后自动从在线目录取（见下文「在线主机目录」）。
 
 逐键说明（与 `internal/config/ssh.go` 的 `SSHSettings.ToSSHConfig()` 实现一致）：
 
@@ -70,6 +73,35 @@
 - 当 `ssh.insecure` 未设置或为 `false` 时，`bk` 保留主机密钥校验，依赖用户的 `~/.ssh/known_hosts`（对应 Requirement 2.6）。
 
 来源：`internal/config/ssh.go`（默认值、必填校验、字段映射）、`cmd/ssh_config.go`（viper key 读取与边界说明）。
+
+#### 在线主机目录（登录后自动获取 SSH 连接）
+
+为免去每台机器手工配置 `ssh.host`，bk 维护一份在线「主机目录」（Supabase `cli.hosts` 表）。
+**`bk auth login` 成功后会自动拉取主机目录并缓存到本地** `~/.local/bk/hosts.json`（按 profile 区分），
+后续命令离线读取。
+
+**解析优先级（本地 `.bs.yaml` 优先）：**
+
+1. 本地配了 `ssh.host`（非空）→ 完全使用本地 `ssh` 块（历史行为不变）。
+2. 本地未配 `ssh.host` → 回退到缓存的在线主机目录：
+   - 用 `ssh.host_name` 按名称选择；
+   - 未指定 `ssh.host_name` 时取目录中标记为默认（`is_default`）的那条；若无默认且只有一条，取该条；
+   - 若有多条且无默认、又未指定名称 → 报错并提示设置 `ssh.host_name`。
+   - 选中记录的 `host` / `ssh_user` / `ssh_port` 生效；**`identity` 与 `insecure` 仍取本地** `.bs.yaml`
+     （私钥与本机安全选项不入库，只能本地提供）。本地若另配了 `ssh.user` / `ssh.port` 则继续覆盖在线值。
+3. 既无本地 `ssh.host` 也无可用缓存 → 给出「未配置 ssh.host」的明确错误（建议先 `bk auth login` 同步，或本地配置 `ssh.host`）。
+
+**安全模型：** 在线目录只下发可公开的连接坐标（`host` / `ssh_user` / `ssh_port`），
+**绝不存储私钥、密码或 identity 路径**。任意已登录用户可读目录（RLS `USING true`），仅管理员可维护（`cli.is_admin()`）。
+
+**相关命令：**
+
+```bash
+bk host ls            # 列出本地缓存的主机目录
+bk host ls --sync     # 先从线上刷新缓存再列出
+```
+
+**启用前提：** 需先把 `migrations/hosts.sql` 应用到生产 Supabase，并确保 `cli` schema 已在项目 API 设置中暴露（PGRST），否则登录时的同步会以「提示」形式失败（不影响登录本身）。
 
 ### `proxy` 块
 

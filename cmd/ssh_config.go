@@ -4,9 +4,14 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"errors"
+	"fmt"
+	"strings"
+
 	"github.com/spf13/viper"
 
 	"pkg.blksails.net/bk/internal/config"
+	"pkg.blksails.net/bk/internal/hosts"
 	"pkg.blksails.net/bk/internal/sshx"
 )
 
@@ -36,7 +41,9 @@ import (
 //
 // 签名冻结，供下游 spec（dokku-management）安全依赖（Requirement 9.1/9.5）。
 func SSHConfig(profile string) (sshx.Config, error) {
-	return sshConfigFrom(viper.GetViper(), profile)
+	return sshConfigFrom(viper.GetViper(), profile, func(p string) ([]hosts.Host, error) {
+		return hosts.Load(hostsCache, p)
+	})
 }
 
 // sshConfigFrom 是 SSHConfig 的可测核心：从注入的 *viper.Viper 读取全局 ssh 块，
@@ -45,15 +52,64 @@ func SSHConfig(profile string) (sshx.Config, error) {
 // 无需触达文件系统或全局 viper 状态。
 //
 // 本函数为纯读：仅调用 viper 的 Get* 读取，不写回任何键，也不访问 auth.json。
-func sshConfigFrom(v *viper.Viper, profile string) (sshx.Config, error) {
-	_ = profile // 全局 ssh 块；profile 随签名保留以供向前兼容（见文件头注释）。
-
-	settings := config.SSHSettings{
+// 解析优先级（本地 .bs.yaml 优先）：
+//  1. 本地显式配了 ssh.host（非空）→ 完全使用本地 ssh 块（历史行为不变）。
+//  2. 本地未配 ssh.host → 回退到登录后缓存的在线主机目录：按 ssh.host_name 选择，
+//     未指定则取 is_default（或唯一一条）；host/user/port 取在线记录，identity/insecure
+//     仍取本地（私钥与本机安全选项不入库，只能本地提供）。本地若另配了 ssh.user/ssh.port
+//     则继续覆盖在线值（保持本地优先的一致语义）。
+//  3. 既无本地 host 也无可用缓存 → 退回 ToSSHConfig() 给出「未配置 ssh.host」的明确错误。
+//
+// loadHosts 作为注入缝（生产为 hosts.Load(hostsCache,·)），使分层逻辑可在内存中被测试。
+func sshConfigFrom(v *viper.Viper, profile string, loadHosts func(string) ([]hosts.Host, error)) (sshx.Config, error) {
+	local := config.SSHSettings{
 		Host:     v.GetString("ssh.host"),
 		User:     v.GetString("ssh.user"),
 		Port:     v.GetInt("ssh.port"),
 		Identity: v.GetString("ssh.identity"),
 		Insecure: v.GetBool("ssh.insecure"),
 	}
-	return settings.ToSSHConfig()
+
+	// 本地优先：显式配了 ssh.host 就完全用本地块。
+	if strings.TrimSpace(local.Host) != "" {
+		return local.ToSSHConfig()
+	}
+
+	// 回退：用登录后缓存的在线主机目录。
+	wantName := v.GetString("ssh.host_name")
+	if loadHosts != nil {
+		list, err := loadHosts(profile)
+		if err == nil && len(list) > 0 {
+			h, perr := hosts.Pick(list, wantName)
+			if perr == nil {
+				merged := config.SSHSettings{
+					Host:     h.Host,
+					User:     firstNonEmpty(local.User, h.SSHUser),
+					Port:     firstNonZeroInt(local.Port, h.SSHPort),
+					Identity: local.Identity, // identity 只来自本地
+					Insecure: local.Insecure, // insecure 只来自本地
+				}
+				return merged.ToSSHConfig()
+			}
+			if errors.Is(perr, hosts.ErrNotFound) {
+				if wantName != "" {
+					return sshx.Config{}, fmt.Errorf(
+						"缓存主机目录中未找到名为 %q 的主机；运行 `bk host ls` 查看可用项，或在 .bs.yaml 配置 ssh.host", wantName)
+				}
+				return sshx.Config{}, fmt.Errorf(
+					"缓存中有多个主机且未指定默认；请在 .bs.yaml 设置 ssh.host_name 指定其一（运行 `bk host ls` 查看）")
+			}
+		}
+	}
+
+	// 都没有 → 回退本地（会因 host 空给出既有的明确错误，并建议先登录同步或配置 ssh.host）。
+	return local.ToSSHConfig()
+}
+
+// firstNonZeroInt 返回第一个非零整数。
+func firstNonZeroInt(a, b int) int {
+	if a != 0 {
+		return a
+	}
+	return b
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
+	"pkg.blksails.net/bk/internal/hosts"
 )
 
 // viperFromYAML 构造一个仅从内存 yaml 字符串读取的 *viper.Viper，
@@ -30,7 +31,7 @@ func TestSSHConfigFrom_FullBlock(t *testing.T) {
 		"  identity: ~/.ssh/id\n"+
 		"  insecure: true\n")
 
-	cfg, err := sshConfigFrom(v, "default")
+	cfg, err := sshConfigFrom(v, "default", nil)
 	if err != nil {
 		t.Fatalf("sshConfigFrom returned error: %v", err)
 	}
@@ -59,7 +60,7 @@ func TestSSHConfigFrom_MissingHost(t *testing.T) {
 		"  user: bar\n"+
 		"  port: 2222\n")
 
-	cfg, err := sshConfigFrom(v, "default")
+	cfg, err := sshConfigFrom(v, "default", nil)
 	if err == nil {
 		t.Fatalf("expected error for missing ssh.host, got nil (cfg=%+v)", cfg)
 	}
@@ -75,7 +76,7 @@ func TestSSHConfigFrom_Defaults(t *testing.T) {
 		"ssh:\n"+
 		"  host: only-host\n")
 
-	cfg, err := sshConfigFrom(v, "default")
+	cfg, err := sshConfigFrom(v, "default", nil)
 	if err != nil {
 		t.Fatalf("sshConfigFrom returned error: %v", err)
 	}
@@ -107,12 +108,12 @@ func TestSSHConfigFrom_ProfileIsolation(t *testing.T) {
 		"  port: 2200\n")
 
 	// profile A 读取
-	a, err := sshConfigFrom(v, "alpha")
+	a, err := sshConfigFrom(v, "alpha", nil)
 	if err != nil {
 		t.Fatalf("sshConfigFrom(alpha): %v", err)
 	}
 	// profile B 读取（不同 profile 名）
-	b, err := sshConfigFrom(v, "beta")
+	b, err := sshConfigFrom(v, "beta", nil)
 	if err != nil {
 		t.Fatalf("sshConfigFrom(beta): %v", err)
 	}
@@ -126,7 +127,7 @@ func TestSSHConfigFrom_ProfileIsolation(t *testing.T) {
 	}
 
 	// 纯读可重入：再次读取 alpha 仍得到相同结果（无副作用、未串改 viper）。
-	a2, err := sshConfigFrom(v, "alpha")
+	a2, err := sshConfigFrom(v, "alpha", nil)
 	if err != nil {
 		t.Fatalf("sshConfigFrom(alpha) second call: %v", err)
 	}
@@ -138,5 +139,75 @@ func TestSSHConfigFrom_ProfileIsolation(t *testing.T) {
 	// （ssh 块仍是原值，没有被某个 profile 的读取动作改写）。
 	if got := v.GetString("ssh.host"); got != "shared-host" {
 		t.Fatalf("viper ssh.host mutated to %q; SSHConfig must be pure-read", got)
+	}
+}
+
+// --- 在线主机目录回退分层（apps-host-directory）---
+
+// fakeLoadHosts 返回固定主机列表，作为 loadHosts 注入缝。
+func fakeLoadHosts(list []hosts.Host) func(string) ([]hosts.Host, error) {
+	return func(string) ([]hosts.Host, error) { return list, nil }
+}
+
+// TestSSHConfigFrom_OnlineFallback_DefaultHost：本地无 ssh.host 时，回退到缓存目录，
+// 取 is_default 记录的 host/user/port。
+func TestSSHConfigFrom_OnlineFallback_DefaultHost(t *testing.T) {
+	v := viperFromYAML(t, "ssh:\n  identity: /local/key\n")
+	load := fakeLoadHosts([]hosts.Host{
+		{Name: "stg", Host: "s.example", SSHUser: "deploy", SSHPort: 2022},
+		{Name: "prod", Host: "p.example", SSHUser: "dokku", SSHPort: 22, IsDefault: true},
+	})
+	cfg, err := sshConfigFrom(v, "default", load)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Host != "p.example" || cfg.User != "dokku" || cfg.Port != 22 {
+		t.Fatalf("want prod default, got %+v", cfg)
+	}
+	// identity 仍来自本地。
+	if cfg.IdentityFile != "/local/key" {
+		t.Fatalf("identity should come from local .bs.yaml, got %q", cfg.IdentityFile)
+	}
+}
+
+// TestSSHConfigFrom_OnlineFallback_ByName：ssh.host_name 选择指定主机。
+func TestSSHConfigFrom_OnlineFallback_ByName(t *testing.T) {
+	v := viperFromYAML(t, "ssh:\n  host_name: stg\n")
+	load := fakeLoadHosts([]hosts.Host{
+		{Name: "stg", Host: "s.example", SSHUser: "deploy", SSHPort: 2022},
+		{Name: "prod", Host: "p.example", IsDefault: true},
+	})
+	cfg, err := sshConfigFrom(v, "default", load)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Host != "s.example" || cfg.Port != 2022 {
+		t.Fatalf("want stg, got %+v", cfg)
+	}
+}
+
+// TestSSHConfigFrom_LocalWins：本地配了 ssh.host 时完全用本地，忽略在线目录。
+func TestSSHConfigFrom_LocalWins(t *testing.T) {
+	v := viperFromYAML(t, "ssh:\n  host: local.example\n  user: me\n")
+	load := fakeLoadHosts([]hosts.Host{{Name: "prod", Host: "p.example", IsDefault: true}})
+	cfg, err := sshConfigFrom(v, "default", load)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Host != "local.example" || cfg.User != "me" {
+		t.Fatalf("local .bs.yaml must win, got %+v", cfg)
+	}
+}
+
+// TestSSHConfigFrom_MultiNoDefault_Errors：缓存多条且无默认、未指定名称 → 明确错误。
+func TestSSHConfigFrom_MultiNoDefault_Errors(t *testing.T) {
+	v := viperFromYAML(t, "ssh:\n  identity: /k\n")
+	load := fakeLoadHosts([]hosts.Host{{Name: "a", Host: "a"}, {Name: "b", Host: "b"}})
+	_, err := sshConfigFrom(v, "default", load)
+	if err == nil {
+		t.Fatal("expected error when multiple hosts and no default/name")
+	}
+	if !strings.Contains(err.Error(), "host_name") {
+		t.Fatalf("error should hint host_name, got %q", err.Error())
 	}
 }

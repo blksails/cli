@@ -45,7 +45,17 @@ var loginCmd = &cobra.Command{
 			userPassword = pass
 		}
 
-		return runLoginWith(authConfig, profile, userEmail, userPassword, supabaseSignIn)
+		if err := runLoginWith(authConfig, profile, userEmail, userPassword, supabaseSignIn); err != nil {
+			return err
+		}
+		// 登录成功后同步在线主机目录到本地缓存（best-effort）：失败不影响登录结果，
+		// 仅提示——SSH 连接仍可回退到本地 .bs.yaml 或下次 `bk host ls --sync`。
+		if n, err := fetchAndCacheHosts(profile); err != nil {
+			fmt.Fprintf(os.Stderr, "提示：同步主机目录失败（不影响登录）：%v\n", err)
+		} else if n > 0 {
+			fmt.Fprintf(os.Stderr, "已同步 %d 条主机记录到本地缓存。\n", n)
+		}
+		return nil
 	},
 }
 

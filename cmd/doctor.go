@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"pkg.blksails.net/bk/internal/auth"
+	"pkg.blksails.net/bk/internal/hosts"
 	"pkg.blksails.net/bk/internal/sshx"
 )
 
@@ -244,7 +245,9 @@ func gatherDoctorInputs(profile string, now time.Time) doctorInputs {
 	}
 
 	// (3) SSH 块：仅当能成功映射出非空 host 时视为已配置（Requirement 12.3/12.5）。
-	if sshCfg, err := sshConfigFrom(viper.GetViper(), profile); err == nil && sshCfg.Host != "" {
+	if sshCfg, err := sshConfigFrom(viper.GetViper(), profile, func(p string) ([]hosts.Host, error) {
+		return hosts.Load(hostsCache, p)
+	}); err == nil && sshCfg.Host != "" {
 		in.SSHConfigured = true
 		in.SSHConfig = sshCfg
 	}
