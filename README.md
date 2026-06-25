@@ -117,6 +117,8 @@ bk doctor
 
 SSH 密钥发放（为客户/成员生成并代装 Dokku 访问密钥）见 [`docs/ssh-keys.md`](docs/ssh-keys.md)。
 
+proxy 转发目标 allowlist 的中心化管理见 [`docs/proxy-targets.md`](docs/proxy-targets.md)。
+
 ## 开发
 
 ```bash
