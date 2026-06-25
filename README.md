@@ -18,6 +18,7 @@
 | `bk ssh-key` | SSH 密钥发放：生成 / 登记 / 代装 / 吊销 |
 | `bk access-key` | 访问密钥管理 |
 | `bk doctor` | 环境自检 |
+| `bk update` | 自升级到最新版本（别名 `upgrade`） |
 | `bk version` | 显示版本与构建信息 |
 
 ## 安装
@@ -63,6 +64,21 @@ go install pkg.blksails.net/bk@latest
 make build            # 产物在 ./bin/bk
 ./bin/bk version
 ```
+
+### 方式四：自升级（已装过 bk）
+
+```bash
+bk update             # 升级到最新版（交互确认）
+bk update --check     # 仅检查是否有新版本
+bk update -y          # 跳过确认直接升级
+bk update --version v0.1.1   # 安装指定版本
+```
+
+`bk update`（别名 `bk upgrade`）从 GitHub Releases 拉取最新版、校验 sha256 后原子替换当前二进制。
+
+> 仓库为私有，下载需 GitHub token：自动按 `--token` > `GH_TOKEN` > `GITHUB_TOKEN` 环境变量 >
+> 已登录的 `gh`（`gh auth token`）解析。若 bk 装在系统目录（如 `/usr/local/bin`）而当前用户无写权限，
+> 需用 `sudo` 运行或重新安装。
 
 ## 快速开始
 
