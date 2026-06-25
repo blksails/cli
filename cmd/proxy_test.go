@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,6 +90,13 @@ func TestProxyHelpListsSubcommands(t *testing.T) {
 // 替换占位；mirror 在缺 hub 配置时先行报错，故此处仍以其 RunE 验证「非静默成功」。
 // forward 的真实行为（参数校验/解析/运行）由 proxyForward_test.go 覆盖。
 func TestProxyPlaceholdersNotImplemented(t *testing.T) {
+	// 隔离：把 proxy hub 目录缓存指向不存在的临时路径，确保 resolveHubConfig 无目录可回退，
+	// 从而「缺必填配置 → 报错」的前提成立（否则本机若存在 ~/.local/bk/proxyhub.json，
+	// 会从目录补全配置使 mirror 继续执行）。
+	origCache := proxyHubCache
+	proxyHubCache = filepath.Join(t.TempDir(), "no-proxyhub.json")
+	t.Cleanup(func() { proxyHubCache = origCache })
+
 	if mirrorCmd.RunE == nil {
 		t.Fatalf("mirrorCmd.RunE 为 nil")
 	}

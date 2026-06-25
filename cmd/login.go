@@ -55,6 +55,13 @@ var loginCmd = &cobra.Command{
 		} else if n > 0 {
 			fmt.Fprintf(os.Stderr, "已同步 %d 条主机记录到本地缓存。\n", n)
 		}
+		// 同步在线 proxy hub 目录（best-effort）：使 `bk proxy forward` 登录即用，
+		// 无需手配 proxy.server/token/ca。失败不影响登录。
+		if n, err := fetchAndCacheProxyHub(profile); err != nil {
+			fmt.Fprintf(os.Stderr, "提示：同步 proxy hub 目录失败（不影响登录）：%v\n", err)
+		} else if n > 0 {
+			fmt.Fprintf(os.Stderr, "已同步 %d 条 proxy hub 记录到本地缓存。\n", n)
+		}
 		return nil
 	},
 }

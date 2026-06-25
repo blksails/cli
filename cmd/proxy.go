@@ -5,10 +5,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"pkg.blksails.net/bk/internal/proxyhub"
 )
 
 // proxy.go 提供 `bk proxy` 命令族的父命令骨架（design：File Structure Plan
@@ -78,11 +81,63 @@ type hubConfig struct {
 // proxy.insecure 配置；显式设置时（含 --insecure=false）标志优先。
 func resolveHubConfig(cmd *cobra.Command) (hubConfig, error) {
 	insecureSet := cmd.Flags().Changed("insecure")
-	return resolveHubConfigFrom(
+	v := viper.GetViper()
+
+	// 先按本地（flags + .bs.yaml 的 proxy.*）解析。配齐则直接用。
+	cfg, err := resolveHubConfigFrom(
 		proxyServer, proxyToken, proxyApp,
 		proxyInsecure, proxyCAFile, proxyServerName,
-		insecureSet, viper.GetViper(),
+		insecureSet, v,
 	)
+	if err == nil {
+		return cfg, nil
+	}
+
+	// 本地未配齐 server/token/app → 回退到登录后缓存的「proxy hub 目录」（cli.proxy_hub），
+	// 实现「登录即用」：本地项仍优先，缺的用目录补；默认 hub 的证书物化为本地文件作 --ca。
+	merged, ok := hubConfigFromDirectory(v, insecureSet)
+	if !ok {
+		return hubConfig{}, err // 无可回退的目录 → 返回原始「缺少必填项」错误
+	}
+	return merged, nil
+}
+
+// hubConfigFromDirectory 用缓存的 proxy hub 目录补全 hub 配置（本地项优先）。
+// 返回 (cfg, true) 表示已从目录配齐 server/token/app；否则 (零值, false)。
+func hubConfigFromDirectory(v *viper.Viper, insecureSet bool) (hubConfig, bool) {
+	hubs, lerr := proxyhub.Load(proxyHubCache, profile)
+	if lerr != nil || len(hubs) == 0 {
+		return hubConfig{}, false
+	}
+	h, perr := proxyhub.Pick(hubs, v.GetString("proxy.hub_name"))
+	if perr != nil {
+		return hubConfig{}, false
+	}
+	cfg := hubConfig{
+		Server:     firstNonEmpty(firstNonEmpty(proxyServer, v.GetString("proxy.server")), h.Server),
+		Token:      firstNonEmpty(firstNonEmpty(proxyToken, v.GetString("proxy.token")), h.Token),
+		App:        firstNonEmpty(firstNonEmpty(proxyApp, v.GetString("proxy.app")), h.App),
+		CAFile:     firstNonEmpty(proxyCAFile, v.GetString("proxy.ca")),
+		ServerName: firstNonEmpty(proxyServerName, v.GetString("proxy.server_name")),
+	}
+	switch {
+	case insecureSet:
+		cfg.Insecure = proxyInsecure
+	case v.IsSet("proxy.insecure"):
+		cfg.Insecure = v.GetBool("proxy.insecure")
+	default:
+		cfg.Insecure = h.Insecure
+	}
+	// 物化目录里的证书到本地文件供 TLS 校验（本地未显式配 ca 时）。
+	if cfg.CAFile == "" && h.CACert != "" && proxyHubCAPath != "" {
+		if werr := os.WriteFile(proxyHubCAPath, []byte(h.CACert), 0o600); werr == nil {
+			cfg.CAFile = proxyHubCAPath
+		}
+	}
+	if cfg.Server == "" || cfg.Token == "" || cfg.App == "" {
+		return hubConfig{}, false
+	}
+	return cfg, true
 }
 
 // resolveHubConfigFrom 是 resolveHubConfig 的可测核心：注入显式标志值与
