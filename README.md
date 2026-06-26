@@ -11,7 +11,7 @@
 
 | 命令族 | 说明 |
 | --- | --- |
-| `bk app` | 管理 Dokku 应用：列举 / 创建 / 销毁 / 配置 / 进程 / 日志 / 重启 / 扩缩容 |
+| `bk app` | 管理 Dokku 应用：列举 / 创建 / 销毁 / 配置 / 进程 / 日志 / 重启 / 扩缩容 / 部署 remote |
 | `bk auth` | 用户认证管理（登录 / 登出 / 当前身份） |
 | `bk proxy` | 本地代理命令族：HTTP 流量镜像（mirror）/ TCP 端口转发（forward） |
 | `bk vault` | Secret Vault：本机加密存储、可经 Supabase 共享 |
@@ -107,6 +107,27 @@ bk app logs myapp
 # 环境自检
 bk doctor
 ```
+
+## 把项目接入部署
+
+`bk` 走 Dokku「git push 即部署」模型：`bk` 负责把周边配好，`git push` 触发构建部署。
+
+```bash
+# 1) 在项目仓库里添加 Dokku 部署 remote（主机地址自动从在线主机目录解析）
+bk app remote myapp                 # 添加 remote dokku → dokku@<主机>:myapp
+bk app remote myapp --print         # 只看 URL，不改仓库
+
+# 2) 配置运行时环境与密钥
+bk app config:set myapp KEY=VALUE   # 运行时环境变量
+bk vault set myapp SECRET=...        # 加密 secret
+
+# 3) 部署（推到部署分支，通常 main）
+git push dokku main
+```
+
+> `bk app remote` 的主机地址优先取 `.bs.yaml` 的 `ssh.host`，否则用登录后缓存的在线主机目录
+> （`bk host ls`）；git 推送用户固定为 `dokku`。remote 默认名为 `dokku`（刻意不叫 `origin`，
+> 避免覆盖你的 GitHub `origin`）。应用尚不存在时先 `bk app create myapp`。
 
 ## 配置
 
