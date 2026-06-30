@@ -129,6 +129,23 @@ git push dokku main
 > （`bk host ls`）；git 推送用户固定为 `dokku`。remote 默认名为 `dokku`（刻意不叫 `origin`，
 > 避免覆盖你的 GitHub `origin`）。应用尚不存在时先 `bk app create myapp`。
 
+## 作为 Claude Code Skill 安装
+
+仓库内置了一个 bk 的 Claude Code skill（`.claude/skills/bk/SKILL.md`），让 AI 助手会用 `bk` 管理应用、配置、Vault 与代理。它随仓库自带，在本仓库里**开箱即用**；要在你自己的 Claude Code 里全局启用，一键复制下面命令安装到 `~/.claude/skills/`：
+
+```bash
+# 在 bk 仓库根目录执行：把 skill 一键安装到当前用户的 Claude Code
+mkdir -p ~/.claude/skills/bk && cp .claude/skills/bk/SKILL.md ~/.claude/skills/bk/SKILL.md
+```
+
+只想在某个项目里启用（而非全局），复制到该项目的 `.claude/skills/` 即可：
+
+```bash
+mkdir -p <你的项目>/.claude/skills/bk && cp .claude/skills/bk/SKILL.md <你的项目>/.claude/skills/bk/SKILL.md
+```
+
+安装后在 Claude Code 中提到「bk」「黑帆云」「列举应用」「设环境变量」「端口转发」「发 SSH 密钥」等，助手会自动用上该 skill。完整的人读手册见 [`skills.md`](skills.md)。
+
 ## 配置
 
 `bk` 通过配置文件 + 环境变量 + 命令行 flag 三层来源管理配置，优先级为：
