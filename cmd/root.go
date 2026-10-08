@@ -14,11 +14,12 @@ import (
 )
 
 var (
-	cfgFile     string
-	apiEndpoint string
-	apiKey      string
-	profile     string
-	schema      string = "blacksail"
+	cfgFile      string
+	apiEndpoint  string
+	apiKey       string
+	profile      string
+	schema       string = "blacksail"
+	docsEndpoint string
 )
 
 // defaultAPIKey 是生产 Supabase（https://supabase.blksails.cn）的 anon（public）key。
@@ -68,10 +69,13 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", defaultAPIKey, "API 密钥")
 	// viper config api_endpoint
 	rootCmd.PersistentFlags().StringVar(&profile, "profile", "default", "配置文件名称")
+	rootCmd.PersistentFlags().StringVar(&docsEndpoint, "docs-endpoint", "https://tdocs.apps.blksails.cn", "在线文档 API 端点")
 
 	// viper config api_endpoint, api_key
 	_ = viper.BindPFlag("api_endpoint", rootCmd.PersistentFlags().Lookup("api-endpoint"))
 	_ = viper.BindPFlag("api_key", rootCmd.PersistentFlags().Lookup("api-key"))
+	_ = viper.BindPFlag("docs.endpoint", rootCmd.PersistentFlags().Lookup("docs-endpoint"))
+	_ = viper.BindEnv("docs.endpoint", "BK_DOCS_ENDPOINT", "TDOCS_SERVER_URL")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

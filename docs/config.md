@@ -2,6 +2,16 @@
 
 `bk` CLI 通过 `.bs.yaml` 提供统一、稳定的配置结构，供各能力 spec（dokku-management、secret-vault、port-proxy 等）以一致的 key 命名读取配置，避免配置漂移。本文档列出全部配置键、默认值与示例，并与 `internal/config` 的映射实现保持一致。
 
+在线文档服务可通过 `docs.endpoint` 配置，默认值为 `https://tdocs.apps.blksails.cn`。命令行 `--docs-endpoint` 优先，其次是 `BK_DOCS_ENDPOINT`（兼容 `TDOCS_SERVER_URL`），最后读取配置文件：
+
+```yaml
+docs:
+  provider: tdocs
+  endpoint: https://tdocs.apps.blksails.cn
+```
+
+`docs.provider` 选择 `bk docs` 的默认文档来源，当前支持 `tdocs`（腾讯文档）。可由 `--provider` 或 `BK_DOCS_PROVIDER` 覆盖；未来接入飞书后可将默认值改为对应 provider。
+
 ## 概述
 
 ### 配置文件查找

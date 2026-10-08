@@ -14,6 +14,7 @@
 | `bk app` | 管理 Dokku 应用：列举 / 创建 / 销毁 / 配置 / 进程 / 日志 / 重启 / 扩缩容 / 部署（remote、deploy） |
 | `bk auth` | 用户认证管理（登录 / 登出 / 当前身份） |
 | `bk proxy` | 本地代理命令族：HTTP 流量镜像（mirror）/ TCP 端口转发（forward） |
+| `bk docs` | 在线文档：通过 `--provider tdocs` 管理腾讯文档，并为飞书等来源预留扩展 |
 | `bk vault` | Secret Vault：本机加密存储、可经 Supabase 共享 |
 | `bk ssh-key` | SSH 密钥发放：生成 / 登记 / 代装 / 吊销 |
 | `bk access-key` | 访问密钥管理 |
@@ -91,6 +92,10 @@ bk auth login
 
 # 查看当前身份
 bk auth whoami
+
+# 首次连接并浏览在线文档
+bk docs auth
+bk docs ls
 
 # 列举应用
 bk app ls
@@ -180,8 +185,11 @@ mkdir -p <你的项目>/.claude/skills/bk && cp .claude/skills/bk/SKILL.md <你�
 | `--api-endpoint` | API 端点 | `https://supabase.blksails.cn` |
 | `--api-key` | API 密钥（Supabase anon key） | 内置生产 anon key（可覆盖） |
 | `--profile` | 配置档名称 | `default` |
+| `--docs-endpoint` | 在线文档 API 端点 | `https://tdocs.apps.blksails.cn` |
 
 更多配置细节见 [`docs/config.md`](docs/config.md)。
+
+在线文档授权与命令说明见 [`docs/online-docs.md`](docs/online-docs.md)。
 
 SSH 密钥发放（为客户/成员生成并代装 Dokku 访问密钥）见 [`docs/ssh-keys.md`](docs/ssh-keys.md)。
 

@@ -1,6 +1,6 @@
 # bk 使用手册（skills.md）
 
-> `bk` 是黑帆云（BlackSails Cloud）的统一命令行工具：管理 Dokku 应用、发布与配置应用、本地代理（HTTP 镜像 / TCP 转发）、SSH 密钥发放与加密 Secret Vault。
+> `bk` 是黑帆云（BlackSails Cloud）的统一命令行工具：管理 Dokku 应用、在线文档、发布与配置应用、本地代理（HTTP 镜像 / TCP 转发）、SSH 密钥发放与加密 Secret Vault。
 >
 > 本文是**面向使用者的速查手册**，按「先上手、再分场景、最后查命令」组织。完整的安装/发布说明见 [`README.md`](README.md)，配置细节见 [`docs/config.md`](docs/config.md)。
 
@@ -18,6 +18,7 @@
   - [4.4 Secret Vault（加密密钥）](#44-secret-vault加密密钥)
   - [4.5 本地代理：TCP 转发 / HTTP 镜像](#45-本地代理tcp-转发--http-镜像)
   - [4.6 SSH 密钥发放](#46-ssh-密钥发放)
+  - [4.7 在线文档](#47-在线文档)
 - [5. 配置与多环境（profile）](#5-配置与多环境profile)
 - [6. 排错与自检](#6-排错与自检)
 - [7. 完整命令参考](#7-完整命令参考)
@@ -56,6 +57,7 @@ bk app ls
 | **proxy hub** | NAT 友好的隧道汇聚点（yamux+TLS）。`mirror`/`forward` 客户端拨入 hub。「登录即用」，坐标来自在线目录。 |
 | **Vault** | 本机主密钥加密 secret，密文存 Supabase，按登录身份多端共享。主密钥仅在本机 `~/.local/bk/vault.key`，永不上传。 |
 | **allowlist** | proxy 转发目标白名单，中心化于 Supabase，hub 侧防 SSRF 的安全控制。 |
+| **在线文档** | 由 tdocs 服务接入腾讯文档，复用当前 bk profile 的登录态，并按用户/公司隔离授权。 |
 
 **配置优先级**：`命令行 flag > 环境变量 > 配置文件（.bs.yaml）`
 
@@ -68,6 +70,7 @@ bk app ls
 | `bk auth` | 登录 / 登出 / 查看当前身份 / 列出配置档 |
 | `bk init` | 一键初始化新用户环境 |
 | `bk app` | 管理 Dokku 应用：列举/创建/销毁/配置/进程/日志/重启/扩缩容 |
+| `bk docs` | 腾讯在线文档：授权/浏览/读取/追加/上传/导出 |
 | `bk vault` | Secret Vault：本机加密存储、Supabase 共享 |
 | `bk proxy` | 本地代理：HTTP 流量镜像（mirror）/ TCP 端口转发（forward）/ hub / allowlist |
 | `bk ssh-key` | SSH 密钥发放：生成 / 登记 / 代装 / 吊销 |
@@ -237,6 +240,22 @@ bk ssh-key revoke ...                  # 吊销并从 Dokku 移除
 
 ---
 
+### 4.7 在线文档
+
+```bash
+bk docs auth --provider tdocs             # 首次使用：生成腾讯文档授权链接
+bk docs status                            # 检查授权状态
+bk docs ls --provider tdocs               # 浏览腾讯文档
+bk docs cat 项目/发布计划                  # 读取 Markdown
+bk docs append 项目/发布计划 "新增一段"     # 追加文本
+bk docs download 项目/发布计划 -f docx      # 导出下载
+bk docs upload report.docx                # 上传
+```
+
+`bk docs` 复用当前 `bk auth` profile，无需单独执行 `tdocs login`。`--provider` 默认读取 `docs.provider`（未配置时为 `tdocs`），可用 `BK_DOCS_PROVIDER` 设置；provider 路由为后续飞书集成预留。文件可按 ID、唯一标题或 `目录/文件` 路径定位。完整说明见 [`docs/online-docs.md`](docs/online-docs.md)。
+
+---
+
 ## 5. 配置与多环境（profile）
 
 `bk` 通过「配置文件 + 环境变量 + 命令行 flag」三层管理配置，优先级 `flag > env > 文件`。
@@ -258,6 +277,7 @@ bk doctor --profile production      # 自检指定档
 | `--api-endpoint` | API 端点 | `https://supabase.blksails.cn` |
 | `--api-key` | API 密钥（Supabase anon key） | 内置生产 anon key |
 | `--profile` | 配置档名称 | `default` |
+| `--docs-endpoint` | 在线文档 API 端点 | `https://tdocs.apps.blksails.cn` |
 
 更多细节见 [`docs/config.md`](docs/config.md) 与 [`docs/ssh-keys.md`](docs/ssh-keys.md)、[`docs/proxy-targets.md`](docs/proxy-targets.md)。
 
@@ -311,6 +331,12 @@ bk
 │   ├── list <app>                列出 key 名
 │   ├── rm <app> KEY               删除
 │   └── export <app>              全部解密为 env 格式
+├── docs                在线文档
+│   ├── auth / status             授权与状态
+│   ├── ls / cat                 浏览与读取
+│   ├── append                    追加文本
+│   ├── upload / download         上传与导出
+│   └── mkdir                     创建文件夹
 ├── proxy               本地代理              (--server, --token, --app, --insecure, --ca, --server-name)
 │   ├── forward <expr>...   TCP 端口转发      (--direct)
 │   ├── mirror              HTTP 流量镜像     (--target必填, --method, --path, --host, --header, --rule-id)
@@ -326,7 +352,7 @@ bk
 ├── update              自升级（别名 upgrade）  (--check, --force, -y/--yes, --version, --token)
 └── version             版本与构建信息
 
-全局 flag: --config  --api-endpoint  --api-key  --profile
+全局 flag: --config  --api-endpoint  --api-key  --profile  --docs-endpoint
 ```
 
 > 一切以 `bk <command> --help` 的实时输出为准——每个命令都内置了中文说明与示例。

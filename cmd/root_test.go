@@ -9,10 +9,10 @@ import (
 )
 
 // TestPersistentFlagsRegistered verifies Requirement 1.2 / 1.3:
-// the four global persistent flags are registered on rootCmd and
+// the global persistent flags are registered on rootCmd and
 // --profile defaults to "default".
 func TestPersistentFlagsRegistered(t *testing.T) {
-	for _, name := range []string{"config", "api-endpoint", "api-key", "profile"} {
+	for _, name := range []string{"config", "api-endpoint", "api-key", "profile", "docs-endpoint"} {
 		if f := rootCmd.PersistentFlags().Lookup(name); f == nil {
 			t.Fatalf("persistent flag --%s is not registered on rootCmd", name)
 		}

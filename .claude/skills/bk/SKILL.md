@@ -1,6 +1,6 @@
 ---
 name: bk
-description: 用黑帆云 bk CLI 管理 Dokku 应用、应用配置、Secret Vault、本地代理（HTTP 镜像 / TCP 转发）与 SSH 密钥发放。当用户提到 bk、黑帆云、BlackSails Cloud，或要「列举/创建/销毁应用」「看应用日志/进程」「设应用环境变量」「存取加密 secret / vault」「端口转发 / 流量镜像 / proxy」「发 SSH 密钥」「登录黑帆云」「初始化 bk 环境」时触发。
+description: 用黑帆云 bk CLI 管理 Dokku 应用、在线文档、应用配置、Secret Vault、本地代理（HTTP 镜像 / TCP 转发）与 SSH 密钥发放。当用户提到 bk、黑帆云、BlackSails Cloud，或要「列举/创建/销毁应用」「读写腾讯在线文档」「看应用日志/进程」「设应用环境变量」「存取加密 secret / vault」「端口转发 / 流量镜像 / proxy」「发 SSH 密钥」「登录黑帆云」「初始化 bk 环境」时触发。
 allowed-tools: Bash, Read
 ---
 
@@ -37,6 +37,7 @@ bk app ls                           # 开始使用
 | 日志 | `bk app logs <app>`（`-n N` `-p web` `-t` 流式 `-q` 原始） |
 | 应用环境变量（明文） | `bk app config <app>` · `bk app config:set <app> K=V [--no-restart]` · `bk app config:unset <app> K` |
 | Secret Vault（加密） | `bk vault set <app> K=V` · `bk vault get <app> K` · `bk vault list <app>` · `bk vault rm <app> K` · `bk vault export <app>` |
+| 在线文档 | `bk docs auth --provider tdocs` · `bk docs ls --provider tdocs` · `bk docs cat <id|标题|路径>` · `bk docs append` · `bk docs upload` · `bk docs download` |
 | TCP 端口转发 | `bk proxy forward 8080:app:80 9090:80`（`--direct` 直连不建隧道） |
 | HTTP 流量镜像 | `bk proxy mirror --target http://127.0.0.1:8080 [--method --path --host --header K:V]` |
 | proxy hub / 白名单 | `bk proxy hub ls` · `bk proxy target ls`（管理员 `add`/`rm`/`sync`） |
@@ -44,7 +45,7 @@ bk app ls                           # 开始使用
 | 主机目录 | `bk host ls [--sync]` |
 | 自检 / 升级 / 版本 | `bk doctor` · `bk update [--check]` · `bk version` |
 
-全局 flag：`--config` `--api-endpoint` `--api-key` `--profile`（优先级：flag > 环境变量 > `.bs.yaml`）。
+全局 flag：`--config` `--api-endpoint` `--api-key` `--profile` `--docs-endpoint`（优先级：flag > 环境变量 > `.bs.yaml`）。
 
 ## 排错首选
 
