@@ -41,7 +41,8 @@ var vaultCmd = &cobra.Command{
   bk vault get <app> KEY            取回并解密单个 secret，仅输出明文
   bk vault list <app>               列出该 app 下的 key 名（不显示值）
   bk vault rm <app> KEY             删除单个 secret
-  bk vault export <app>             全部解密为 KEY=VALUE env 格式输出`,
+  bk vault export <app>             全部解密为 KEY=VALUE env 格式输出
+  bk vault run <app> -- <command>    注入 secrets 并执行本地命令（不输出明文）`,
 	// 无子命令参数时渲染帮助，保证 `bk vault` / `bk vault --help` 列出用法。
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()

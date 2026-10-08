@@ -15,7 +15,7 @@
 | `bk auth` | 用户认证管理（登录 / 登出 / 当前身份） |
 | `bk proxy` | 本地代理命令族：HTTP 流量镜像（mirror）/ TCP 端口转发（forward） |
 | `bk docs` | 在线文档：通过 `--provider tdocs` 管理腾讯文档，并为飞书等来源预留扩展 |
-| `bk vault` | Secret Vault：本机加密存储、可经 Supabase 共享 |
+| `bk vault` | Secret Vault：本机加密存储、Supabase 共享、运行时注入本地进程 |
 | `bk ssh-key` | SSH 密钥发放：生成 / 登记 / 代装 / 吊销 |
 | `bk access-key` | 访问密钥管理 |
 | `bk doctor` | 环境自检 |
@@ -142,6 +142,7 @@ bk app remote myapp                 # 仅添加 remote dokku → dokku@<主机>:
 bk app remote myapp --print         # 只看 URL，不改仓库
 bk app config:set myapp KEY=VALUE   # 运行时环境变量
 bk vault set myapp SECRET=...        # 加密 secret
+bk vault run myapp -- ./server       # 不输出明文，注入环境后启动本地进程
 git push dokku main                 # 部署（分支需匹配应用部署分支）
 ```
 

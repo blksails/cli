@@ -4,6 +4,7 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -47,8 +48,24 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
-		os.Exit(1)
+		os.Exit(commandExitCode(err))
 	}
+}
+
+// commandExitCode 保留子进程类错误的退出状态（如 vault run 的 *exec.ExitError），
+// 让脚本可以直接判断目标命令结果。普通 BK 错误仍统一返回 1。
+func commandExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var withExitCode interface{ ExitCode() int }
+	if errors.As(err, &withExitCode) {
+		code := withExitCode.ExitCode()
+		if code > 0 && code <= 255 {
+			return code
+		}
+	}
+	return 1
 }
 
 func init() {

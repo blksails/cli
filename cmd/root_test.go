@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,3 +59,29 @@ func TestLoadConfigToleratesUnknownKeys(t *testing.T) {
 
 // ensure viper import is used even if loadConfig signature changes.
 var _ = viper.GetViper
+
+type fakeExitCodeError struct{ code int }
+
+func (e fakeExitCodeError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
+func (e fakeExitCodeError) ExitCode() int { return e.code }
+
+func TestCommandExitCodePreservesWrappedChildStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{name: "success", err: nil, want: 0},
+		{name: "ordinary error", err: errors.New("failed"), want: 1},
+		{name: "child status", err: fakeExitCodeError{code: 7}, want: 7},
+		{name: "wrapped child status", err: fmt.Errorf("command failed: %w", fakeExitCodeError{code: 42}), want: 42},
+		{name: "invalid child status", err: fakeExitCodeError{code: -1}, want: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := commandExitCode(test.err); got != test.want {
+				t.Fatalf("commandExitCode(%v) = %d, want %d", test.err, got, test.want)
+			}
+		})
+	}
+}

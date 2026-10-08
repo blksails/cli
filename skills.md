@@ -159,7 +159,18 @@ bk vault get myapp KEY                        # 取回并解密单个，仅输�
 bk vault list myapp                           # 列出 key 名（不显示值）
 bk vault rm myapp KEY                          # 删除单个
 bk vault export myapp                          # 全部解密为 KEY=VALUE env 格式输出
+bk vault run myapp -- ./server --port 8080     # 注入 secrets 后执行本地命令
 ```
+
+`vault run` 会先在内存中完成全部解密，再由 Vault 值覆盖子进程的同名环境变量。它不输出
+明文、不生成 `.env` 文件、不经过 shell，并透传 stdin/stdout/stderr、当前目录和退出码：
+
+```bash
+bk vault run domain-ops -- cdncert -domain example.com
+bk vault run myapp -- sh -c 'exec ./server'
+```
+
+如果任一 secret 无法解密或 key 不是合法环境变量名，目标命令不会启动。
 
 把 Vault 的 secret 灌进应用配置：
 
@@ -325,12 +336,13 @@ bk
 │   ├── config <app>    查看环境变量
 │   ├── config:set <app> KEY=VALUE...     设置        (--no-restart)
 │   └── config:unset <app> KEY...         删除
-├── vault               Secret Vault
+├── vault               Secret Vault（含 run 本地进程注入）
 │   ├── set <app> KEY=VALUE...     加密写入（upsert）
 │   ├── get <app> KEY              解密取回（仅输出明文）
 │   ├── list <app>                列出 key 名
 │   ├── rm <app> KEY               删除
-│   └── export <app>              全部解密为 env 格式
+│   ├── export <app>              全部解密为 env 格式
+│   └── run <app> -- <command>    注入 secrets 并执行本地进程
 ├── docs                在线文档
 │   ├── auth / status             授权与状态
 │   ├── ls / cat                 浏览与读取

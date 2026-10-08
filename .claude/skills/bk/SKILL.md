@@ -36,7 +36,7 @@ bk app ls                           # 开始使用
 | 进程 / 重启 / 扩缩容 | `bk app ps <app>` · `bk app restart <app>` · `bk app scale <app> web=3` |
 | 日志 | `bk app logs <app>`（`-n N` `-p web` `-t` 流式 `-q` 原始） |
 | 应用环境变量（明文） | `bk app config <app>` · `bk app config:set <app> K=V [--no-restart]` · `bk app config:unset <app> K` |
-| Secret Vault（加密） | `bk vault set <app> K=V` · `bk vault get <app> K` · `bk vault list <app>` · `bk vault rm <app> K` · `bk vault export <app>` |
+| Secret Vault（加密） | `bk vault set <app> K=V` · `bk vault get <app> K` · `bk vault list <app>` · `bk vault rm <app> K` · `bk vault export <app>` · `bk vault run <app> -- <command>` |
 | 在线文档 | `bk docs auth --provider tdocs` · `bk docs ls --provider tdocs` · `bk docs cat <id|标题|路径>` · `bk docs append` · `bk docs upload` · `bk docs download` |
 | TCP 端口转发 | `bk proxy forward 8080:app:80 9090:80`（`--direct` 直连不建隧道） |
 | HTTP 流量镜像 | `bk proxy mirror --target http://127.0.0.1:8080 [--method --path --host --header K:V]` |
