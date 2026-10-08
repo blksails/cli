@@ -24,6 +24,13 @@ type docsAPI interface {
 	List(context.Context, string, docsclient.ListOptions) (*docsclient.ListResult, error)
 	Content(context.Context, string, string) (*docsclient.ContentResult, error)
 	Append(context.Context, string, string) error
+	ListSheets(context.Context, string) (*docsclient.ListSheetsResult, error)
+	ReadRange(context.Context, string, string, string) (*docsclient.ReadRangeResult, error)
+	WriteRange(context.Context, string, string, string, [][]string) (*docsclient.WriteRangeResult, error)
+	AddSheet(context.Context, string, string, int, int) (*docsclient.SheetInfo, error)
+	DeleteSheet(context.Context, string, string) error
+	ClearRange(context.Context, string, string, string) error
+	DeleteDimension(context.Context, string, string, string, int, int) error
 	Export(context.Context, string, string) (string, error)
 	Download(context.Context, string, io.Writer) error
 	Upload(context.Context, string, string) (*docsclient.UploadResult, error)
@@ -263,7 +270,7 @@ var docsCatCmd = &cobra.Command{
 
 var docsAppendInput string
 var docsAppendCmd = &cobra.Command{
-	Use: "append <id|文件名> [text]", Short: "在在线文档末尾追加文本", Args: cobra.RangeArgs(1, 2),
+	Use: "append <id|文件名> [text]", Short: "在文档末尾追加文本或在表格空行追加数据", Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var raw []byte
 		var err error
@@ -290,7 +297,7 @@ var docsAppendCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := api.Append(cmd.Context(), item.ID, text); err != nil {
+		if err := appendDocsContent(cmd.Context(), api, item, text); err != nil {
 			return fmt.Errorf("追加失败: %w", err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "已追加")
@@ -459,6 +466,6 @@ func init() {
 	docsDownloadCmd.Flags().StringVarP(&docsDownloadFormat, "format", "f", "docx", "导出格式: docx|xlsx|pdf|pptx")
 	docsUploadCmd.Flags().StringVar(&docsUploadFolder, "folder", "", "目标文件夹 ID")
 	docsMkdirCmd.Flags().StringVar(&docsMkdirParent, "parent", "", "父文件夹 ID")
-	docsCmd.AddCommand(docsAuthCmd, docsStatusCmd, docsListCmd, docsCatCmd, docsAppendCmd, docsDownloadCmd, docsUploadCmd, docsMkdirCmd)
+	docsCmd.AddCommand(docsAuthCmd, docsStatusCmd, docsListCmd, docsCatCmd, docsAppendCmd, docsDownloadCmd, docsUploadCmd, docsMkdirCmd, docsSheetCmd)
 	rootCmd.AddCommand(docsCmd)
 }

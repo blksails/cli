@@ -70,6 +70,27 @@ type ContentResult struct {
 	Content  string `json:"content"`
 }
 
+type SheetInfo struct {
+	SheetID     string `json:"sheet_id"`
+	Title       string `json:"title"`
+	RowCount    int    `json:"row_count"`
+	ColumnCount int    `json:"column_count"`
+}
+
+type ListSheetsResult struct {
+	Sheets []SheetInfo `json:"sheets"`
+}
+
+type ReadRangeResult struct {
+	Range  string     `json:"range"`
+	Values [][]string `json:"values"`
+}
+
+type WriteRangeResult struct {
+	UpdatedRows  int `json:"updated_rows"`
+	UpdatedCells int `json:"updated_cells"`
+}
+
 type UploadResult struct {
 	FileID string `json:"file_id"`
 	URL    string `json:"url"`
@@ -123,6 +144,59 @@ func (c *Client) Content(ctx context.Context, fileID, format string) (*ContentRe
 func (c *Client) Append(ctx context.Context, fileID, text string) error {
 	p := "/api/v1/files/" + url.PathEscape(fileID) + "/content"
 	return c.doJSON(ctx, http.MethodPost, p, map[string]string{"text": text}, nil)
+}
+
+func (c *Client) ListSheets(ctx context.Context, fileID string) (*ListSheetsResult, error) {
+	p := "/api/v1/files/" + url.PathEscape(fileID) + "/sheets"
+	var out ListSheetsResult
+	if err := c.doJSON(ctx, http.MethodGet, p, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) ReadRange(ctx context.Context, fileID, sheetID, cellRange string) (*ReadRangeResult, error) {
+	p := "/api/v1/files/" + url.PathEscape(fileID) + "/sheets/" + url.PathEscape(sheetID) +
+		"/values?range=" + url.QueryEscape(cellRange)
+	var out ReadRangeResult
+	if err := c.doJSON(ctx, http.MethodGet, p, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) WriteRange(ctx context.Context, fileID, sheetID, cellRange string, values [][]string) (*WriteRangeResult, error) {
+	p := "/api/v1/files/" + url.PathEscape(fileID) + "/sheets/" + url.PathEscape(sheetID) + "/values"
+	var out WriteRangeResult
+	if err := c.doJSON(ctx, http.MethodPut, p, map[string]any{"range": cellRange, "values": values}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) AddSheet(ctx context.Context, fileID, title string, rows, cols int) (*SheetInfo, error) {
+	p := "/api/v1/files/" + url.PathEscape(fileID) + "/sheets"
+	var out SheetInfo
+	if err := c.doJSON(ctx, http.MethodPost, p, map[string]any{"title": title, "row_count": rows, "column_count": cols}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteSheet(ctx context.Context, fileID, sheetID string) error {
+	p := "/api/v1/files/" + url.PathEscape(fileID) + "/sheets/" + url.PathEscape(sheetID)
+	return c.doJSON(ctx, http.MethodDelete, p, nil, nil)
+}
+
+func (c *Client) ClearRange(ctx context.Context, fileID, sheetID, cellRange string) error {
+	p := "/api/v1/files/" + url.PathEscape(fileID) + "/sheets/" + url.PathEscape(sheetID) + "/values:clear"
+	return c.doJSON(ctx, http.MethodPost, p, map[string]string{"range": cellRange}, nil)
+}
+
+func (c *Client) DeleteDimension(ctx context.Context, fileID, sheetID, dimension string, start, end int) error {
+	p := "/api/v1/files/" + url.PathEscape(fileID) + "/sheets/" + url.PathEscape(sheetID) + "/dimension:delete"
+	body := map[string]any{"dimension": dimension, "start": start, "end": end}
+	return c.doJSON(ctx, http.MethodPost, p, body, nil)
 }
 
 func (c *Client) Export(ctx context.Context, fileID, format string) (string, error) {

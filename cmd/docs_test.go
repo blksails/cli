@@ -23,6 +23,25 @@ func (*fakeDocsAPI) Content(context.Context, string, string) (*docsclient.Conten
 	return nil, fmt.Errorf("unused")
 }
 func (*fakeDocsAPI) Append(context.Context, string, string) error { return fmt.Errorf("unused") }
+func (*fakeDocsAPI) ListSheets(context.Context, string) (*docsclient.ListSheetsResult, error) {
+	return nil, fmt.Errorf("unused")
+}
+func (*fakeDocsAPI) ReadRange(context.Context, string, string, string) (*docsclient.ReadRangeResult, error) {
+	return nil, fmt.Errorf("unused")
+}
+func (*fakeDocsAPI) WriteRange(context.Context, string, string, string, [][]string) (*docsclient.WriteRangeResult, error) {
+	return nil, fmt.Errorf("unused")
+}
+func (*fakeDocsAPI) AddSheet(context.Context, string, string, int, int) (*docsclient.SheetInfo, error) {
+	return nil, fmt.Errorf("unused")
+}
+func (*fakeDocsAPI) DeleteSheet(context.Context, string, string) error { return fmt.Errorf("unused") }
+func (*fakeDocsAPI) ClearRange(context.Context, string, string, string) error {
+	return fmt.Errorf("unused")
+}
+func (*fakeDocsAPI) DeleteDimension(context.Context, string, string, string, int, int) error {
+	return fmt.Errorf("unused")
+}
 func (*fakeDocsAPI) Export(context.Context, string, string) (string, error) {
 	return "", fmt.Errorf("unused")
 }
@@ -41,6 +60,10 @@ func TestDocsCommandRegistered(t *testing.T) {
 	cmd, _, err := rootCmd.Find([]string{"docs", "cat"})
 	if err != nil || cmd != docsCatCmd {
 		t.Fatalf("docs cat not registered: cmd=%v err=%v", cmd, err)
+	}
+	cmd, _, err = rootCmd.Find([]string{"docs", "sheet", "write"})
+	if err != nil || cmd != docsSheetWriteCmd {
+		t.Fatalf("docs sheet write not registered: cmd=%v err=%v", cmd, err)
 	}
 }
 

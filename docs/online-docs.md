@@ -29,6 +29,17 @@ bk docs cat 数据表 -f csv                  # 表格导出为 CSV 文本
 bk docs append 发布计划 "新增一段"
 echo "新增一段" | bk docs append <file-id>
 bk docs append <file-id> -i note.md
+# append 自动识别在线表格；CSV/TSV 会写入第一张子表的连续空行
+printf 'A131,任务一,P0\nA132,任务二,P0\n' | bk docs append 任务表
+
+bk docs sheet ls 任务表
+bk docs sheet read 任务表 工作表1 A1:D20
+printf 'A131,任务一,P0\n' | bk docs sheet write 任务表 工作表1 A21:C21
+bk docs sheet clear 任务表 工作表1 A21:C21
+bk docs sheet add 任务表 归档 --rows 200 --cols 10
+bk docs sheet rm 任务表 归档
+bk docs sheet delete-rows 任务表 工作表1 21 22
+bk docs sheet delete-cols 任务表 工作表1 4 5
 
 bk docs download 发布计划                  # 默认 docx
 bk docs download 数据表 -f xlsx
@@ -41,6 +52,8 @@ bk docs mkdir 子目录 --parent <folder-id>
 ```
 
 文档参数可使用文件 ID、唯一标题或 `目录/文件` 路径。标题不唯一时命令会要求改用完整路径或 ID，避免操作错误文件。
+
+`sheet write` 会覆盖指定区域，适合精确修改；`append` 会在写入前再次确认目标区域为空，检测到已有数据时会取消操作。
 
 ## Provider 与默认值
 
