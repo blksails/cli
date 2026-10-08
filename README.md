@@ -28,6 +28,13 @@
 
 从 [Releases](../../releases) 页面下载对应平台的归档包，支持：
 
+中国网络可直接使用公开 OSS 镜像：
+
+```text
+https://blksails-pi-desktop.oss-cn-hangzhou.aliyuncs.com/bk/releases/latest.json
+https://blksails-pi-desktop.oss-cn-hangzhou.aliyuncs.com/bk/releases/<tag>/<asset>
+```
+
 | 操作系统 | 架构 |
 | --- | --- |
 | Linux | amd64 / arm64 |
@@ -73,13 +80,15 @@ bk update             # 升级到最新版（交互确认）
 bk update --check     # 仅检查是否有新版本
 bk update -y          # 跳过确认直接升级
 bk update --version v0.1.1   # 安装指定版本
+bk update --mirror off       # 禁用 OSS 镜像，仅使用 GitHub
 ```
 
-`bk update`（别名 `bk upgrade`）从 GitHub Releases 拉取最新版、校验 sha256 后原子替换当前二进制。
+`bk update`（别名 `bk upgrade`）优先从公开 OSS 镜像拉取最新版、校验 sha256 后原子替换当前二进制；
+镜像不可用时自动回退 GitHub Releases。
 
-> 仓库为私有，下载需 GitHub token：自动按 `--token` > `GH_TOKEN` > `GITHUB_TOKEN` 环境变量 >
-> 已登录的 `gh`（`gh auth token`）解析。若 bk 装在系统目录（如 `/usr/local/bin`）而当前用户无写权限，
-> 需用 `sudo` 运行或重新安装。
+> OSS 镜像无需凭据。只有回退私有 GitHub 仓库时才需要 token，自动按 `--token` > `GH_TOKEN` >
+> `GITHUB_TOKEN` 环境变量 > 已登录的 `gh`（`gh auth token`）解析。若 bk 装在系统目录（如
+> `/usr/local/bin`）而当前用户无写权限，需用 `sudo` 运行或重新安装。
 
 ## 快速开始
 
@@ -221,7 +230,9 @@ make snapshot         # 等价于 goreleaser release --snapshot --clean
 
 ### 正式发布
 
-发布需要一个已配置的 GitHub remote 与 `GITHUB_TOKEN`：
+发布需要一个已配置的 GitHub remote 与 `GITHUB_TOKEN`。CI 还需配置
+`ALIYUN_OSS_ACCESS_KEY_ID` 和 `ALIYUN_OSS_ACCESS_KEY_SECRET`，用于同步到
+`oss://blksails-pi-desktop/bk/releases/`：
 
 ```bash
 # 1) 打 tag（语义化版本）
