@@ -19,7 +19,7 @@
   - _Requirements: 3.1, 3.2_
   - _Boundary: docs and validation_
 
-- [ ] 3.1 发布 v0.1.6 并验证 GitHub 与 OSS 公开产物
+- [x] 3.1 发布 v0.1.6 并验证 GitHub 与 OSS 公开产物
   - _Depends: 2.2_
   - _Requirements: 3.3_
   - _Boundary: external release_
