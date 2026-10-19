@@ -1,0 +1,5 @@
+simulation: bk-auth
+routing: path
+mocks:
+  - routeKey: auth
+    path: ../mocks/bk-auth/config.yaml

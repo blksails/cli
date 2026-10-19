@@ -92,6 +92,8 @@ bk update --mirror off       # 禁用 OSS 镜像，仅使用 GitHub
 
 ## 快速开始
 
+登录默认保持 365 天，短期 token 在认证请求前自动续期。暂时性网络故障会保留登录并提示重试；`bk auth whoami` 可查看保持期限。详见 [登录保持策略](docs/login-retention.md)。
+
 ```bash
 # 查看版本
 bk version

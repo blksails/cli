@@ -6,11 +6,32 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/supabase-community/gotrue-go/types"
 	"pkg.blksails.net/bk/internal/auth"
 )
+
+func TestPersistLoginKeepsJWTExpiryAndSets365DayDeadline(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "auth.json")
+	start := time.Now()
+	s := fakeSession("test@example.com", "access", "refresh")
+	if err := persistLogin(path, "default", s); err != nil {
+		t.Fatal(err)
+	}
+	configs, err := auth.LoadAuthConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := configs[0]
+	if c.Session.ExpiresAt != s.ExpiresAt {
+		t.Fatal("server JWT expiration must not change")
+	}
+	if c.LoginExpiresAt < start.Add(auth.LoginLifetime).Unix() || c.LoginExpiresAt > time.Now().Add(auth.LoginLifetime).Unix() {
+		t.Fatal("login deadline must be 365 days from sign-in")
+	}
+}
 
 // TestLoginSuccessMessage_NoTokenLeak proves that the login-success output
 // shown to the user contains only non-sensitive information (profile name and
