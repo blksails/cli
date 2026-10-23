@@ -10,6 +10,14 @@ docs:
   endpoint: https://tdocs.apps.blksails.cn
 ```
 
+素材库 Webapp API 默认使用 `https://blksails.cn`，可通过 `bk materials --endpoint`、
+`BK_MATERIALS_ENDPOINT`（兼容 `BK_METARAILS_ENDPOINT`、`BK_WEBAPP_ENDPOINT`）或配置文件覆盖：
+
+```yaml
+materials:
+  endpoint: http://localhost:3000
+```
+
 `docs.provider` 选择 `bk docs` 的默认文档来源，当前支持 `tdocs`（腾讯文档）。可由 `--provider` 或 `BK_DOCS_PROVIDER` 覆盖；未来接入飞书后可将默认值改为对应 provider。
 
 ## 概述

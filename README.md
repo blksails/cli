@@ -15,6 +15,7 @@
 | `bk auth` | 用户认证管理（登录 / 登出 / 当前身份） |
 | `bk proxy` | 本地代理命令族：HTTP 流量镜像（mirror）/ TCP 端口转发（forward） |
 | `bk docs` | 在线文档：通过 `--provider tdocs` 管理腾讯文档，并为飞书等来源预留扩展 |
+| `bk materials` | 素材库：调用 Webapp 接口批量下载 ZIP、批量上传素材（兼容别名 `metarails`） |
 | `bk vault` | Secret Vault：本机加密存储、Supabase 共享、运行时注入本地进程 |
 | `bk ssh-key` | SSH 密钥发放：生成 / 登记 / 代装 / 吊销 |
 | `bk access-key` | 访问密钥管理 |
@@ -107,6 +108,12 @@ bk auth whoami
 # 首次连接并浏览在线文档
 bk docs auth
 bk docs ls
+
+# 批量上传同类型素材（类型可从扩展名推断）
+bk materials upload hero.png cover.jpg --folder 12 --tag campaign
+
+# 按素材 ID 批量下载；等号右侧是 ZIP 内文件路径
+bk materials download 101=images/hero.png 102=videos/demo.mp4 -o materials.zip
 
 # 列举应用
 bk app ls
