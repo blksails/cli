@@ -12,8 +12,9 @@ import (
 )
 
 type AuthConfig struct {
-	Profile string  `json:"profile"`
-	Session Session `json:"session"`
+	Profile        string  `json:"profile"`
+	Session        Session `json:"session"`
+	LoginExpiresAt int64   `json:"login_expires_at,omitempty"`
 }
 
 type Session struct {

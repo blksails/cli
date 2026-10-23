@@ -61,15 +61,26 @@ func runWhoami(w io.Writer, authPath, profile string, now time.Time) error {
 
 	fmt.Fprintf(w, "profile: %s\n", cfg.Profile)
 	fmt.Fprintf(w, "用户邮箱: %s\n", cfg.Session.User.Email)
+	if cfg.LoginExpiresAt != 0 {
+		fmt.Fprintf(w, "登录保持至: %s（365 天，token 自动续期）\n", time.Unix(cfg.LoginExpiresAt, 0).Format(time.RFC3339))
+		if now.Unix() >= cfg.LoginExpiresAt {
+			fmt.Fprintln(w, "登录期限已满，请运行 `bk auth login` 重新登录")
+			return nil
+		}
+	}
 
 	if auth.IsExpiredAt(cfg.Session, now, whoamiSkew) {
+		if cfg.LoginExpiresAt > now.Unix() && cfg.Session.RefreshToken != "" {
+			fmt.Fprintln(w, "登录状态: 已保持，短期 token 已到期，将在下次请求时自动续期")
+			return nil
+		}
 		fmt.Fprintln(w, "会话状态: 已过期")
 		fmt.Fprintln(w, "请运行 `bk auth login` 重新登录，或刷新会话")
 		return nil
 	}
 
 	fmt.Fprintln(w, "会话状态: 有效")
-	fmt.Fprintf(w, "过期时间: %s\n", time.Unix(cfg.Session.ExpiresAt, 0).Format(time.RFC3339))
+	fmt.Fprintf(w, "短期 token 过期时间: %s\n", time.Unix(cfg.Session.ExpiresAt, 0).Format(time.RFC3339))
 	return nil
 }
 

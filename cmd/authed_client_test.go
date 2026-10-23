@@ -166,9 +166,8 @@ func TestAuthedClientWith_ExpiredRefreshSuccess_WritesBack(t *testing.T) {
 	}
 }
 
-// (d) 过期会话 + refresher 失败 → 返回可识别为 ErrReloginRequired 的错误，无 client
-// （Requirement 8.4, 10.4）。
-func TestAuthedClientWith_ExpiredRefreshFailure_ReturnsReloginRequired(t *testing.T) {
+// A network failure retains the login and asks for a retry, not a new login.
+func TestAuthedClientWith_ExpiredRefreshFailure_RetainsLogin(t *testing.T) {
 	now := time.Now()
 	path := seedAuthFile(t, "default", expiredSession(now))
 	ref := &fakeRefresher{returnErr: errors.New("network down")}
@@ -177,8 +176,8 @@ func TestAuthedClientWith_ExpiredRefreshFailure_ReturnsReloginRequired(t *testin
 	if err == nil {
 		t.Fatal("expected error when refresh fails")
 	}
-	if !errors.Is(err, auth.ErrReloginRequired) {
-		t.Fatalf("expected errors.Is ErrReloginRequired, got: %v", err)
+	if errors.Is(err, auth.ErrReloginRequired) || !errors.Is(err, auth.ErrRefreshUnavailable) {
+		t.Fatalf("expected retryable refresh failure, got: %v", err)
 	}
 	if client != nil {
 		t.Fatal("expected nil client when refresh fails")

@@ -9,10 +9,10 @@ import (
 
 // fakeRefresher 是测试用的 Refresher 实现，记录被调用情况并返回预置结果。
 type fakeRefresher struct {
-	called       bool
-	gotToken     string
-	returnSess   Session
-	returnErr    error
+	called     bool
+	gotToken   string
+	returnSess Session
+	returnErr  error
 }
 
 func (f *fakeRefresher) RefreshToken(refreshToken string) (Session, error) {
@@ -100,7 +100,7 @@ func TestEnsureFresh_ExpiredRefreshSuccess_WritesBack(t *testing.T) {
 func TestEnsureFresh_ExpiredRefreshFails_ReloginRequired(t *testing.T) {
 	now := time.Now()
 	path := writeAuthFile(t, "default", expiredSession(now))
-	ref := &fakeRefresher{returnErr: errors.New("token revoked")}
+	ref := &fakeRefresher{returnErr: ErrReloginRequired}
 
 	_, err := EnsureFresh(path, "default", now, testSkew, ref)
 	if !errors.Is(err, ErrReloginRequired) {

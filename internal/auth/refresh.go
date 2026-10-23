@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/supabase-community/gotrue-go"
@@ -13,10 +14,15 @@ import (
 // 回写、sentinel 错误）可在不触达网络的情况下被完整单测覆盖；生产路径由
 // GoTrueRefresher 适配真实的 gotrue/supabase 客户端。
 
-// ErrReloginRequired 是可被调用方识别的 sentinel 错误：当会话已过期且无法续期
-//（缺少 refresh token、刷新失败、目标 profile 不存在）时返回，调用方据此引导用户
+// ErrReloginRequired 用于登录期限已满、缺少 refresh token、授权被明确拒绝或
+// 目标 profile 不存在的情况，调用方据此引导用户
 // 重新登录（Requirement 10.4）。包裹时请使用 %w 以保留 errors.Is 可识别性。
 var ErrReloginRequired = errors.New("session expired, please re-login")
+
+// LoginLifetime bounds a saved CLI login, independently of short-lived JWTs.
+const LoginLifetime = 365 * 24 * time.Hour
+
+var ErrRefreshUnavailable = errors.New("authentication service unavailable; saved login retained, retry later")
 
 // Refresher 抽象「用 refresh token 向认证服务换取新会话」的能力。注入该接口而非
 // 直接在编排逻辑中硬编码 supabase 调用，便于以 fake 实现做单元测试。
@@ -30,8 +36,8 @@ type Refresher interface {
 //   - 会话未过期：原样返回，不调用 refresher（Requirement 10.1）。
 //   - 会话已过期且存在 refresh token：调用 refresher 刷新；成功则把新会话用
 //     AddAuthConfig 覆盖回写到 path 对应文件并返回新会话（Requirement 10.2/10.3）。
-//   - 会话已过期但无 refresh token，或刷新失败：返回包裹 ErrReloginRequired 的错误
-//     （Requirement 10.4）。
+//   - 会话已过期但无 refresh token，或授权被明确拒绝：返回 ErrReloginRequired
+//     （Requirement 10.4）。暂时性刷新失败保留凭据，返回 ErrRefreshUnavailable。
 //
 // now/skew 用于过期判定（基于 Session.ExpiresAt，不依赖远端，Requirement 10.5）。
 func EnsureFresh(path, profile string, now time.Time, skew time.Duration, refresher Refresher) (Session, error) {
@@ -50,9 +56,22 @@ func EnsureFresh(path, profile string, now time.Time, skew time.Duration, refres
 	if current == nil {
 		return Session{}, fmt.Errorf("profile %q not found: %w", profile, ErrReloginRequired)
 	}
+	// Adopt existing logins once. Refreshes must never move this deadline.
+	legacy := current.LoginExpiresAt == 0
+	if legacy {
+		current.LoginExpiresAt = now.Add(LoginLifetime).Unix()
+	}
+	if now.Unix() >= current.LoginExpiresAt {
+		return Session{}, fmt.Errorf("profile %q reached its 365-day login limit: %w", profile, ErrReloginRequired)
+	}
 
 	// 未过期：直接复用现有会话。
 	if !IsExpiredAt(current.Session, now, skew) {
+		if legacy {
+			if err := AddAuthConfig(path, current); err != nil {
+				return Session{}, fmt.Errorf("persist login deadline: %w", err)
+			}
+		}
 		return current.Session, nil
 	}
 
@@ -68,11 +87,15 @@ func EnsureFresh(path, profile string, now time.Time, skew time.Duration, refres
 	// 尝试刷新；失败回退到重新登录提示。
 	refreshed, err := refresher.RefreshToken(current.Session.RefreshToken)
 	if err != nil {
-		return Session{}, fmt.Errorf("refresh session for profile %q: %w: %w", profile, err, ErrReloginRequired)
+		if errors.Is(err, ErrReloginRequired) {
+			return Session{}, fmt.Errorf("refresh session for profile %q: %w", profile, ErrReloginRequired)
+		}
+		// Do not clear credentials or report logout for network/proxy outages.
+		return Session{}, fmt.Errorf("refresh session for profile %q: %w", profile, ErrRefreshUnavailable)
 	}
 
 	// 刷新成功：覆盖回写新会话到该 profile（Requirement 10.3）。
-	updated := &AuthConfig{Profile: profile, Session: refreshed}
+	updated := &AuthConfig{Profile: profile, Session: refreshed, LoginExpiresAt: current.LoginExpiresAt}
 	if err := AddAuthConfig(path, updated); err != nil {
 		return Session{}, fmt.Errorf("persist refreshed session for profile %q: %w", profile, err)
 	}
@@ -97,6 +120,14 @@ func (g GoTrueRefresher) RefreshToken(refreshToken string) (Session, error) {
 	}
 	resp, err := g.Client.RefreshToken(refreshToken)
 	if err != nil {
+		// gotrue-go v1.2.0 exposes HTTP failures as strings rather than typed
+		// errors. Only explicit refresh/session rejection requires a login.
+		message := err.Error()
+		for _, code := range []string{"refresh_token_not_found", "refresh_token_already_used", "session_not_found", "session_expired", "invalid_grant", "user_banned"} {
+			if (strings.HasPrefix(message, "response status code 400:") || strings.HasPrefix(message, "response status code 401:") || strings.HasPrefix(message, "response status code 403:")) && strings.Contains(message, code) {
+				return Session{}, ErrReloginRequired
+			}
+		}
 		return Session{}, err
 	}
 	s := resp.Session

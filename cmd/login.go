@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -125,7 +126,8 @@ func runLoginWith(authPath, profile, email, password string, signIn func(email, 
 // the parent directory when missing (Requirements 3.3, 3.4, 3.6).
 func persistLogin(authPath, profile string, session types.Session) error {
 	return auth.AddAuthConfig(authPath, &auth.AuthConfig{
-		Profile: profile,
+		Profile:        profile,
+		LoginExpiresAt: time.Now().Add(auth.LoginLifetime).Unix(),
 		Session: auth.Session{
 			AccessToken:  session.AccessToken,
 			RefreshToken: session.RefreshToken,

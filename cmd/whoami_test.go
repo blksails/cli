@@ -57,10 +57,7 @@ func TestRunWhoami_ValidSession(t *testing.T) {
 	assertNoTokenLeak(t, msg, access, refresh)
 }
 
-// TestRunWhoami_ExpiredSession proves that a session whose ExpiresAt is in the
-// past (relative to the injected now) is reported as expired: the output carries
-// the 已过期 marker plus a re-login/refresh hint, and never leaks the tokens
-// (Requirements 6.3, 6.5).
+// An expired JWT within the login retention period is refreshable, not logged out.
 func TestRunWhoami_ExpiredSession(t *testing.T) {
 	const (
 		access  = "expiredAccessTokenSECRET1234567890"
@@ -79,11 +76,11 @@ func TestRunWhoami_ExpiredSession(t *testing.T) {
 	}
 
 	msg := out.String()
-	if !strings.Contains(msg, "已过期") {
-		t.Errorf("whoami output for an expired session should mark it 已过期, got %q", msg)
+	if !strings.Contains(msg, "短期 token 已到期") {
+		t.Errorf("whoami should distinguish the expired JWT from the retained login: %q", msg)
 	}
-	if !strings.Contains(msg, "login") {
-		t.Errorf("whoami output for an expired session should hint re-login/refresh, got %q", msg)
+	if !strings.Contains(msg, "自动续期") || strings.Contains(msg, "auth login") {
+		t.Errorf("refreshable login should not ask for another login: %q", msg)
 	}
 	if strings.Contains(msg, "有效") {
 		t.Errorf("whoami output must not mark an expired session 有效, got %q", msg)
