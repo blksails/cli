@@ -65,7 +65,7 @@ func runVaultRm(w io.Writer, app, key string, remover vaultRemover) error {
 var vaultRmCmd = &cobra.Command{
 	Use:   "rm <app> KEY",
 	Short: "删除该 app 下指定的单个 secret",
-	Long: `从 Supabase blacksail.secrets 删除 (app, KEY) 对应的记录，删除成功后给出确认。
+	Long: `从 Supabase 内置 Vault 删除 (app, KEY) 对应的记录，删除成功后给出确认。
 
 指定的 (app, KEY) 不存在时以友好提示告知该 key 当前不存在，并以零退出码正常结束（幂等，
 不报错）；仅删除目标 key，同一 app 下的其余 key 不受影响。

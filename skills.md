@@ -55,7 +55,7 @@ bk app ls
 | **profile（配置档）** | 一套独立的登录态 + 连接目标，用全局 `--profile <name>` 切换（默认 `default`）。不同 profile 可指向不同 Dokku 主机/环境。 |
 | **主机目录（host）** | 登录后自动从线上同步的 Dokku 主机坐标，`bk app`/`bk proxy` 会自动取用，无需手填 host。 |
 | **proxy hub** | NAT 友好的隧道汇聚点（yamux+TLS）。`mirror`/`forward` 客户端拨入 hub。「登录即用」，坐标来自在线目录。 |
-| **Vault** | 本机主密钥加密 secret，密文存 Supabase，按登录身份多端共享。主密钥仅在本机 `~/.local/bk/vault.key`，永不上传。 |
+| **Vault** | 使用 Supabase 内置 Vault 加密存储，受控 RPC 按当前登录用户隔离，无需本机密钥。 |
 | **allowlist** | proxy 转发目标白名单，中心化于 Supabase，hub 侧防 SSRF 的安全控制。 |
 | **在线文档** | 由 tdocs 服务接入腾讯文档，复用当前 bk profile 的登录态，并按用户/公司隔离授权。 |
 
@@ -150,7 +150,7 @@ bk app config:unset myapp KEY                # 删除一个或多个
 
 ### 4.4 Secret Vault（加密密钥）
 
-以本机主密钥加密 VALUE，密文存入 Supabase，按登录身份（`--profile`）多端共享。
+通过 Supabase 内置 Vault 加密存储 VALUE，RPC 按登录身份（`--profile`）隔离，支持多端使用。
 
 ```bash
 bk vault set myapp KEY=VALUE                 # 加密并写入（upsert），可一次多个
@@ -178,7 +178,7 @@ bk vault run myapp -- sh -c 'exec ./server'
 bk vault export myapp | xargs bk app config:set myapp
 ```
 
-> 主密钥仅存于本机 `~/.local/bk/vault.key`，**不要丢失**：丢失后已存的密文将无法解密。
+> Vault 在数据库端管理加解密。需要先安装 `cli.bk_vault_*` RPC；不需要本机 `vault.key`，也不直接开放原始 Vault 视图。
 
 ---
 
