@@ -16,7 +16,7 @@
 | `bk proxy` | 本地代理命令族：HTTP 流量镜像（mirror）/ TCP 端口转发（forward） |
 | `bk docs` | 在线文档：通过 `--provider tdocs` 管理腾讯文档，并为飞书等来源预留扩展 |
 | `bk materials` | 素材库：调用 Webapp 接口批量下载 ZIP、批量上传素材（兼容别名 `metarails`） |
-| `bk vault` | Secret Vault：本机加密存储、Supabase 共享、运行时注入本地进程 |
+| `bk vault` | Supabase 内置 Vault：按用户隔离存储、跨端使用、运行时注入本地进程 |
 | `bk ssh-key` | SSH 密钥发放：生成 / 登记 / 代装 / 吊销 |
 | `bk access-key` | 访问密钥管理 |
 | `bk doctor` | 环境自检 |
@@ -292,3 +292,19 @@ jobs:
 ## License
 
 见 [LICENSE](LICENSE)。
+
+### Supabase Vault 后端
+
+`bk vault` 通过 `cli.bk_vault_*` RPC 使用 Supabase 内置 `vault.secrets`，由 Vault 负责加解密和密钥管理。
+RPC 从当前登录 JWT 获取用户身份，按用户/app/key 隔离；无需本机 `vault.key`，不开放 `vault` schema 或原始明文视图。
+
+先应用 Supabase 仓库的 `20261107200000_bk_native_vault_rpc.sql`，再安装本版本 CLI。
+迁移和隔离测试在 Supabase 仓库维护：`bash tests/run_bk_native_vault.sh`。
+原自定义 AES 密文不会被自动导入或覆盖，本版本不会删除已有本机密钥文件。
+
+```bash
+bk vault list aliyun-registry
+bk vault run aliyun-registry -- sh -c 'printf "%s" "$REGISTRY_PASSWORD" | docker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin'
+```
+
+`set` 仅确认写入数量，`list` 仅输出 key 名，`get/export` 是显式输出值的命令，`run` 将值注入子进程。

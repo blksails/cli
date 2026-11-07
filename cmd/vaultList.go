@@ -18,7 +18,7 @@ import (
 // internal/vault.Store.ListKeys，不修改 vault.go、其它 cmd 文件或 internal/vault。
 //
 // 注意：list 仅暴露 key 名，结构上不取回任何密文/明文（ListKeys 仅 Select("key")），故
-// 无需本机主密钥、无需解密——与 get/export 不同，本命令不调用 vaultMasterKey。
+// 仅读取 key 元数据，不请求解密值。
 type vaultLister interface {
 	ListKeys(app string) ([]string, error)
 }
@@ -58,11 +58,11 @@ func runVaultList(w io.Writer, app string, lister vaultLister) error {
 // vaultListCmd 是 `bk vault list <app>`。装配按当前 profile 认证的 vault.Store 后委托
 // runVaultList；RunE 保持轻薄。采用 cobra.ExactArgs(1)：恰需应用名。未登录/会话失效时
 // newVaultStore 透传 AuthedClient 的引导「bk auth login」错误（Requirement 7.2）。
-// 不取主密钥——list 不解密（仅列 key 名）。
+// 只读取 key 名，不请求 secret 值。
 var vaultListCmd = &cobra.Command{
 	Use:   "list <app>",
 	Short: "列出该 app 下的 key 名（不显示值）",
-	Long: `从 Supabase blacksail.secrets 列出指定 app 下属于当前身份的全部 secret 的 key 名，
+	Long: `从 Supabase 内置 Vault 列出指定 app 下属于当前身份的全部 secret 的 key 名，
 以每行一个 key 的稳定顺序输出，便于脚本消费。仅展示 key 名，绝不展示任何 secret 的值。
 
 指定 app 下没有任何 secret 时显示友好提示并正常退出（不报错）。
