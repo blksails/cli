@@ -29,10 +29,14 @@ func runVaultSet(w io.Writer, app string, pairs []string, setter vaultSetter) er
 	return err
 }
 
-var vaultSetCmd = &cobra.Command{Use: "set <app> KEY=VALUE [KEY=VALUE...]", Short: "通过 Supabase Vault 加密并写入 secret", Args: cobra.MinimumNArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-	s, e := newVaultStore(profile)
+var vaultSetCmd = &cobra.Command{Use: "set [app] KEY=VALUE [KEY=VALUE...]", Short: "通过 Supabase Vault 加密并写入 secret", Args: vaultArgs(1, -1), RunE: func(cmd *cobra.Command, args []string) error {
+	s, e := newVaultStore(cmd, profile)
 	if e != nil {
 		return e
 	}
-	return runVaultSet(cmd.OutOrStdout(), args[0], args[1:], s)
+	app, pairs := vaultScope(cmd, args)
+	if len(pairs) == 0 {
+		return fmt.Errorf("缺少 KEY=VALUE")
+	}
+	return runVaultSet(cmd.OutOrStdout(), app, pairs, s)
 }}

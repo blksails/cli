@@ -53,7 +53,7 @@ func runVaultRun(
 	runner processRunner,
 ) error {
 	if len(command) == 0 || command[0] == "" {
-		return fmt.Errorf("缺少要执行的命令；用法：bk vault run <app> -- <command> [args...]")
+		return fmt.Errorf("缺少要执行的命令；用法：bk vault run [app] -- <command> [args...]")
 	}
 
 	secrets, err := lister.List(app)
@@ -102,9 +102,11 @@ func mergeProcessEnvironment(parent []string, overrides map[string]string) []str
 }
 
 var vaultRunCmd = &cobra.Command{
-	Use:   "run <app> -- <command> [args...]",
+	Use:   "run [app] -- <command> [args...]",
 	Short: "将 app 的 secrets 注入本地子进程并执行",
-	Long: `通过受控 RPC 从 Supabase Vault 读取当前身份在指定 app 下的 secrets，
+	Long: `使用 --global 选择所选归属内的全局密钥，此时无需 app 参数。
+
+通过受控 RPC 从 Supabase Vault 读取当前身份在指定 app 下的 secrets，
 将 secrets 作为环境变量注入本地子进程。Vault 值覆盖父进程中的同名环境变量；BK 不输出
 secret 明文，也不创建明文 env 文件。
 
@@ -115,9 +117,13 @@ secret 明文，也不创建明文 env 文件。
   bk vault run myapp -- sh -c 'exec ./server'
 
 如果列举、解密或环境变量校验失败，目标命令不会启动。`,
-	Args: cobra.MinimumNArgs(2),
+	Args: func(cmd *cobra.Command, args []string) error { _, _, err := vaultRunScope(cmd, args); return err },
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := newVaultStore(profile)
+		app, command, err := vaultRunScope(cmd, args)
+		if err != nil {
+			return err
+		}
+		store, err := newVaultStore(cmd, profile)
 		if err != nil {
 			return err
 		}
@@ -127,7 +133,7 @@ secret 明文，也不创建明文 env 文件。
 		}
 		ctx, stop := signalContext(cmd.Context())
 		defer stop()
-		return runVaultRun(ctx, args[0], args[1:], store, processOptions{
+		return runVaultRun(ctx, app, command, store, processOptions{
 			Env:    os.Environ(),
 			Dir:    workingDirectory,
 			Stdin:  cmd.InOrStdin(),

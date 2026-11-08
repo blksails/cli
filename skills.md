@@ -368,3 +368,55 @@ bk
 ```
 
 > 一切以 `bk <command> --help` 的实时输出为准——每个命令都内置了中文说明与示例。
+
+### Vault 全局密钥
+
+使用 `--global` 选择当前归属内的 `global` 分组（等同于显式指定 app 为 `global`）。默认归属个人，也可使用 `--share` 选择企业。
+
+```bash
+bk vault set --global TOKEN=... A=1
+bk vault get --global TOKEN
+bk vault list --global
+bk vault rm --global TOKEN
+bk vault export --global
+bk vault run --global -- ./server --port 8080
+```
+
+不带 `--global` 时仍需提供 app，原有按应用分组的用法保持可用。
+`bk vault run myapp -- ./server` 只加载 myapp 分组，不自动合并全局密钥。
+
+### Vault 个人与企业归属
+
+默认保存个人密钥，仅本人可访问；`--personal` 可显式选择个人归属。
+`--share` 选择当前登录身份所在企业，由服务端解析企业并验证有效成员身份。
+企业有效成员可读取密钥，只有 owner/admin 可写入和删除。`--personal` 与 `--share` 互斥。
+归属与应用分组独立，可结合 `--global`：
+
+```bash
+bk vault set --personal --global TOKEN=...
+bk vault set --share --global TOKEN=...
+bk vault get --share --global TOKEN
+bk vault run --share myapp -- ./server
+```
+
+个人和企业密钥独立存储，不自动合并。无企业身份或无权限时直接报错，不回退到个人归属。
+企业功能需要配套的 Web API 和支持 company scope 的数据库迁移上线。
+
+### 将已有密钥转为企业共享
+
+`ls` 是 `list` 的别名。先列出个人密钥，再选择要共享的 key：
+
+```bash
+bk vault ls --global
+bk vault share --global TOKEN API_KEY
+bk vault ls --global --share
+# 按应用分组同样支持：
+bk vault share myapp DB_PASSWORD
+```
+
+`share` 固定将当前用户的个人条目转为当前企业归属，不需额外加 `--share`。
+转移后个人条目移除，企业有效成员可读，owner/admin 可修改。执行共享需要 owner/admin 身份。
+每次可选择 1 至 100 个 key（重复键去重）。服务端只解密所选 key，重新加密为企业归属，
+然后在单个数据库事务中写入企业并删除个人条目。任一 key 不存在、源值已变化或企业存在同名 key，
+整批失败且保留个人条目，不覆盖企业已有密钥。未选中的个人 key 不受影响。
+服务端和数据库共享迁移必须先上线，CLI 不会降级为分别复制、删除。

@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// vaultList.go 实现 `bk vault list <app>`：`Store.ListKeys` 取回 key 名 → 每行一个 key
+// vaultList.go 实现 `bk vault list [app]`：`Store.ListKeys` 取回 key 名 → 每行一个 key
 // 稳定顺序输出，绝不输出值（design「list 流程」；Requirement 3.1/3.2/3.3/3.4）。
 //
 // 边界（_Boundary: vaultCmd 组_）：本文件只承载 list 子命令与其可测核心 runVaultList，经
@@ -55,27 +55,31 @@ func runVaultList(w io.Writer, app string, lister vaultLister) error {
 	return nil
 }
 
-// vaultListCmd 是 `bk vault list <app>`。装配按当前 profile 认证的 vault.Store 后委托
+// vaultListCmd 是 `bk vault list [app]`。装配按当前 profile 认证的 vault.Store 后委托
 // runVaultList；RunE 保持轻薄。采用 cobra.ExactArgs(1)：恰需应用名。未登录/会话失效时
 // newVaultStore 透传 AuthedClient 的引导「bk auth login」错误（Requirement 7.2）。
 // 只读取 key 名，不请求 secret 值。
 var vaultListCmd = &cobra.Command{
-	Use:   "list <app>",
-	Short: "列出该 app 下的 key 名（不显示值）",
-	Long: `从 Supabase 内置 Vault 列出指定 app 下属于当前身份的全部 secret 的 key 名，
+	Use:     "list [app]",
+	Aliases: []string{"ls"},
+	Short:   "列出该 app 下的 key 名（不显示值）",
+	Long: `使用 --global 选择所选归属内的全局密钥，此时无需 app 参数。
+
+从 Supabase 内置 Vault 列出指定 app 下属于当前身份的全部 secret 的 key 名，
 以每行一个 key 的稳定顺序输出，便于脚本消费。仅展示 key 名，绝不展示任何 secret 的值。
 
 指定 app 下没有任何 secret 时显示友好提示并正常退出（不报错）。
 
 示例用法：
   bk vault list myapp`,
-	Args: cobra.ExactArgs(1),
+	Args: vaultArgs(0, 0),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := newVaultStore(profile)
+		store, err := newVaultStore(cmd, profile)
 		if err != nil {
 			return err
 		}
-		return runVaultList(cmd.OutOrStdout(), args[0], store)
+		app, _ := vaultScope(cmd, args)
+		return runVaultList(cmd.OutOrStdout(), app, store)
 	},
 }
 

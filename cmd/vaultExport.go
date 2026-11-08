@@ -25,10 +25,11 @@ func runVaultExport(w io.Writer, app string, lister vaultListerFull) error {
 	return err
 }
 
-var vaultExportCmd = &cobra.Command{Use: "export <app>", Short: "以 KEY=VALUE 格式输出当前用户的 app secrets", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-	s, e := newVaultStore(profile)
+var vaultExportCmd = &cobra.Command{Use: "export [app]", Short: "以 KEY=VALUE 格式输出当前用户的 app secrets", Args: vaultArgs(0, 0), RunE: func(cmd *cobra.Command, args []string) error {
+	s, e := newVaultStore(cmd, profile)
 	if e != nil {
 		return e
 	}
-	return runVaultExport(cmd.OutOrStdout(), args[0], s)
+	app, _ := vaultScope(cmd, args)
+	return runVaultExport(cmd.OutOrStdout(), app, s)
 }}
