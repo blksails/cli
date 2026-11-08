@@ -3,122 +3,119 @@ package vault
 import (
 	"encoding/json"
 	"errors"
-	"github.com/supabase-community/supabase-go"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func rpcStore(t *testing.T, expected string, reply string, check func(map[string]interface{})) *Store {
+func testStore(t *testing.T, operation, reply string, status int, check func(map[string]interface{})) *Store {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/rest/v1/rpc/"+expected {
-			t.Errorf("unexpected RPC: %s %s", r.Method, r.URL.Path)
+		if r.Method != "POST" || r.URL.Path != "/api/vault" || r.Header.Get("Authorization") != "Bearer session" {
+			t.Error("missing authenticated request")
 		}
-		if r.Header.Get("Content-Profile") != "cli" || r.Header.Get("Authorization") != "Bearer user-session" {
-			t.Error("RPC must use cli schema and verified user session")
+		var body map[string]interface{}
+		if json.NewDecoder(r.Body).Decode(&body) != nil {
+			t.Error("invalid JSON")
 		}
-		var payload map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Error(err)
+		if body["operation"] != operation {
+			t.Error("wrong operation")
 		}
-		if _, exists := payload["owner"]; exists {
-			t.Error("must not send an owner")
+		if _, ok := body["owner"]; ok {
+			t.Error("client supplied owner")
 		}
 		if check != nil {
-			check(payload)
+			check(body)
 		}
-		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
 		w.Write([]byte(reply))
 	}))
 	t.Cleanup(server.Close)
-	c, err := supabase.NewClient(server.URL, "anon-key", &supabase.ClientOptions{Schema: "cli", Headers: map[string]string{"Authorization": "Bearer user-session"}})
+	s, err := NewStore(server.URL+"/api/vault", "session")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewStore(c)
+	return s
 }
-func TestStoreNativeRPCs(t *testing.T) {
+func TestVaultOperations(t *testing.T) {
 	t.Run("set", func(t *testing.T) {
-		s := rpcStore(t, "bk_vault_set", "true", func(p map[string]interface{}) {
-			if p["p_value"] != "plain-value" || p["p_app"] != "app" || p["p_key"] != "TOKEN" {
-				t.Error("incorrect parameters")
+		s := testStore(t, "set", `{"data":true}`, 200, func(b map[string]interface{}) {
+			if b["value"] != "secret" || b["app"] != "app" || b["key"] != "KEY" {
+				t.Error("wrong input")
 			}
 		})
-		if err := s.Set("app", "TOKEN", "plain-value"); err != nil {
+		if err := s.Set("app", "KEY", "secret"); err != nil {
 			t.Fatal(err)
 		}
 	})
-	t.Run("get", func(t *testing.T) {
-		s := rpcStore(t, "bk_vault_get", `"plain-value"`, nil)
-		got, err := s.Get("app", "TOKEN")
-		if err != nil || got != "plain-value" {
-			t.Fatalf("get=%q, %v", got, err)
-		}
-	})
-	t.Run("empty value", func(t *testing.T) {
-		s := rpcStore(t, "bk_vault_get", `""`, nil)
-		got, err := s.Get("app", "TOKEN")
-		if err != nil || got != "" {
-			t.Fatal("empty value must be valid")
-		}
-	})
-	t.Run("metadata list", func(t *testing.T) {
-		s := rpcStore(t, "bk_vault_list_keys", `["A","B"]`, nil)
+	for _, value := range []string{"", "secret"} {
+		t.Run("get", func(t *testing.T) {
+			reply, _ := json.Marshal(map[string]string{"data": value})
+			s := testStore(t, "get", string(reply), 200, nil)
+			got, err := s.Get("app", "KEY")
+			if err != nil || got != value {
+				t.Fatalf("get failed: %v", err)
+			}
+		})
+	}
+	t.Run("keys", func(t *testing.T) {
+		s := testStore(t, "keys", `{"data":["KEY"]}`, 200, nil)
 		got, err := s.ListKeys("app")
-		if err != nil || len(got) != 2 {
-			t.Fatal(got, err)
+		if err != nil || len(got) != 1 || got[0] != "KEY" {
+			t.Fatal("keys failed")
 		}
 	})
-	t.Run("export", func(t *testing.T) {
-		s := rpcStore(t, "bk_vault_list", `[{"app":"app","key":"A","value":"secret"}]`, nil)
+	t.Run("list", func(t *testing.T) {
+		s := testStore(t, "list", `{"data":[{"app":"app","key":"KEY","value":"secret"}]}`, 200, nil)
 		got, err := s.List("app")
 		if err != nil || len(got) != 1 || got[0].Value != "secret" {
-			t.Fatal(got, err)
+			t.Fatal("list failed")
 		}
 	})
 	t.Run("remove", func(t *testing.T) {
-		s := rpcStore(t, "bk_vault_remove", "true", nil)
-		if err := s.Remove("app", "A"); err != nil {
+		s := testStore(t, "remove", `{"data":true}`, 200, nil)
+		if err := s.Remove("app", "KEY"); err != nil {
 			t.Fatal(err)
 		}
 	})
 }
-func TestRPCFailureClassificationAndRedaction(t *testing.T) {
-	for _, tc := range []struct {
-		code string
-		want error
-	}{{"P0002", ErrNotFound}, {"42501", ErrPermission}, {"PGRST301", ErrPermission}, {"22023", nil}, {"PGRST202", nil}, {"SECRET123", nil}} {
-		t.Run(tc.code, func(t *testing.T) {
-			s := rpcStore(t, "bk_vault_set", `{"code":"`+tc.code+`","message":"SENSITIVE-VALUE","details":"SENSITIVE-VALUE"}`, nil)
-			err := s.Set("app", "A", "SENSITIVE-VALUE")
-			if err == nil || strings.Contains(err.Error(), "SENSITIVE-VALUE") {
-				t.Fatal("failure must be redacted")
-			}
-			if tc.want != nil && !errors.Is(err, tc.want) {
-				t.Fatalf("classification: %v", err)
-			}
-		})
-	}
-	for _, reply := range []string{"", `null`, `{}`, `false`, `"SENSITIVE-VALUE"`, `not-json SENSITIVE-VALUE`} {
-		t.Run("invalid "+reply, func(t *testing.T) {
-			s := rpcStore(t, "bk_vault_set", reply, nil)
-			err := s.Set("app", "A", "SENSITIVE-VALUE")
-			if err == nil || strings.Contains(err.Error(), "SENSITIVE-VALUE") {
-				t.Fatal("unexpected write success or disclosure")
-			}
-		})
+func TestErrorsNeverEchoPayload(t *testing.T) {
+	for _, status := range []int{401, 403, 404, 500, 302} {
+		s := testStore(t, "get", `secret-should-not-leak`, status, nil)
+		_, err := s.Get("app", "KEY")
+		if err == nil || strings.Contains(err.Error(), "secret-should-not-leak") {
+			t.Fatal("unsafe error")
+		}
+		if status == 404 && !errors.Is(err, ErrNotFound) {
+			t.Fatal("missing not-found mapping")
+		}
+		if (status == 401 || status == 403) && !errors.Is(err, ErrPermission) {
+			t.Fatal("missing auth mapping")
+		}
 	}
 }
-
-func TestNativeVaultNullListsFailClosed(t *testing.T) {
-	s := rpcStore(t, "bk_vault_list", "null", nil)
-	if _, err := s.List("app"); err == nil {
-		t.Fatal("null export response must fail")
+func TestRejectsUnsafeEndpointAndInvalidResponse(t *testing.T) {
+	for _, endpoint := range []string{"http://example.com/api/vault", "https://user:pass@example.com/api/vault", "https://example.com/api/vault?token=secret"} {
+		if _, err := NewStore(endpoint, "session"); err == nil {
+			t.Fatal("unsafe endpoint")
+		}
 	}
-	s = rpcStore(t, "bk_vault_list_keys", "null", nil)
-	if _, err := s.ListKeys("app"); err == nil {
-		t.Fatal("null key response must fail")
+	for _, reply := range []string{`null`, `{"data":null}`, `{"data":{"secret":"echo"}}`, `not-json`} {
+		s := testStore(t, "get", reply, 200, nil)
+		if _, err := s.Get("app", "KEY"); err == nil {
+			t.Fatal("invalid response accepted")
+		}
+	}
+}
+func TestDoesNotFollowRedirectWithToken(t *testing.T) {
+	reached := false
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true }))
+	defer destination.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, destination.URL, 307) }))
+	defer source.Close()
+	s, _ := NewStore(source.URL, "session")
+	if _, err := s.Get("app", "KEY"); err == nil || reached {
+		t.Fatal("followed redirect")
 	}
 }
