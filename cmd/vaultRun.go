@@ -11,8 +11,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-
-	"pkg.blksails.net/bk/internal/vault"
 )
 
 var processEnvironmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -44,15 +42,13 @@ func (execProcessRunner) Run(ctx context.Context, name string, args []string, op
 	return child.Run()
 }
 
-// runVaultRun 在启动子进程前完成全部记录的解密与环境构造。List、任一 Decrypt 或环境
+// runVaultRun 在启动子进程前完成全部记录读取与环境构造。List 或环境
 // 校验失败时 runner 绝不会被调用，因而不会以不完整的 secrets 启动目标命令。
 func runVaultRun(
 	ctx context.Context,
 	app string,
 	command []string,
-	masterKey []byte,
 	lister vaultListerFull,
-	decrypt func(key []byte, ciphertext string) (string, error),
 	options processOptions,
 	runner processRunner,
 ) error {
@@ -70,10 +66,7 @@ func runVaultRun(
 		if !processEnvironmentName.MatchString(secret.Key) {
 			return fmt.Errorf("secret key %q 不是合法的环境变量名", secret.Key)
 		}
-		plaintext, err := decrypt(masterKey, secret.Value)
-		if err != nil {
-			return fmt.Errorf("解密 secret key %q（app %q）失败：%w", secret.Key, app, err)
-		}
+		plaintext := secret.Value
 		if strings.IndexByte(plaintext, 0) >= 0 {
 			return fmt.Errorf("secret key %q 的值包含环境变量不支持的 NUL 字节", secret.Key)
 		}
@@ -111,7 +104,7 @@ func mergeProcessEnvironment(parent []string, overrides map[string]string) []str
 var vaultRunCmd = &cobra.Command{
 	Use:   "run <app> -- <command> [args...]",
 	Short: "将 app 的 secrets 注入本地子进程并执行",
-	Long: `取回当前身份在指定 app 下的全部密文，在内存中用本机主密钥全部解密成功后，
+	Long: `通过受控 RPC 从 Supabase Vault 读取当前身份在指定 app 下的 secrets，
 将 secrets 作为环境变量注入本地子进程。Vault 值覆盖父进程中的同名环境变量；BK 不输出
 secret 明文，也不创建明文 env 文件。
 
@@ -128,17 +121,13 @@ secret 明文，也不创建明文 env 文件。
 		if err != nil {
 			return err
 		}
-		masterKey, err := vaultMasterKey()
-		if err != nil {
-			return err
-		}
 		workingDirectory, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("读取当前工作目录失败：%w", err)
 		}
 		ctx, stop := signalContext(cmd.Context())
 		defer stop()
-		return runVaultRun(ctx, args[0], args[1:], masterKey, store, vault.Decrypt, processOptions{
+		return runVaultRun(ctx, args[0], args[1:], store, processOptions{
 			Env:    os.Environ(),
 			Dir:    workingDirectory,
 			Stdin:  cmd.InOrStdin(),

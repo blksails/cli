@@ -15,7 +15,8 @@
 | `bk auth` | 用户认证管理（登录 / 登出 / 当前身份） |
 | `bk proxy` | 本地代理命令族：HTTP 流量镜像（mirror）/ TCP 端口转发（forward） |
 | `bk docs` | 在线文档：通过 `--provider tdocs` 管理腾讯文档，并为飞书等来源预留扩展 |
-| `bk vault` | Secret Vault：本机加密存储、Supabase 共享、运行时注入本地进程 |
+| `bk materials` | 素材库：调用 Webapp 接口批量下载 ZIP、批量上传素材（兼容别名 `metarails`） |
+| `bk vault` | 统一应用密钥库：按用户隔离存储、跨端使用、运行时注入本地进程 |
 | `bk ssh-key` | SSH 密钥发放：生成 / 登记 / 代装 / 吊销 |
 | `bk access-key` | 访问密钥管理 |
 | `bk doctor` | 环境自检 |
@@ -107,6 +108,12 @@ bk auth whoami
 # 首次连接并浏览在线文档
 bk docs auth
 bk docs ls
+
+# 批量上传同类型素材（类型可从扩展名推断）
+bk materials upload hero.png cover.jpg --folder 12 --tag campaign
+
+# 按素材 ID 批量下载；等号右侧是 ZIP 内文件路径
+bk materials download 101=images/hero.png 102=videos/demo.mp4 -o materials.zip
 
 # 列举应用
 bk app ls
@@ -285,3 +292,16 @@ jobs:
 ## License
 
 见 [LICENSE](LICENSE)。
+
+### 统一密钥库后端
+
+`bk vault` 使用当前登录用户 JWT 请求 Web 的 `/api/vault`，由服务器加解密，按用户/app/key 隔离。主密钥只在服务器环境变量中，不需要本机 vault.key。
+
+默认入口 `https://blksails.cn/api/vault`，其他环境可设置 `BK_VAULT_URL`（HTTPS，本地测试允许 HTTP）。需要先发布 Web 统一密钥库接口及 Supabase 的 `20261108023000_application_secret_vault.sql` 迁移。旧本地加密表和原生 Vault 数据保留，已有条目需要持有人显式迁移；新列表为空不代表旧条目已迁移。
+
+```bash
+bk vault list aliyun-registry
+bk vault run aliyun-registry -- sh -c 'printf "%s" "$REGISTRY_PASSWORD" | docker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin'
+```
+
+`set` 仅确认写入数量，`list` 仅输出 key 名，`get/export` 是显式输出值的命令，`run` 将值注入子进程。
