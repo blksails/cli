@@ -19,10 +19,11 @@ func runVaultGet(w io.Writer, app, key string, getter vaultGetter) error {
 	return err
 }
 
-var vaultGetCmd = &cobra.Command{Use: "get <app> KEY", Short: "读取当前用户的 secret，仅输出值", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-	s, e := newVaultStore(profile)
+var vaultGetCmd = &cobra.Command{Use: "get [app] KEY", Short: "读取当前用户的 secret，仅输出值", Args: vaultArgs(1, 1), RunE: func(cmd *cobra.Command, args []string) error {
+	s, e := newVaultStore(cmd, profile)
 	if e != nil {
 		return e
 	}
-	return runVaultGet(cmd.OutOrStdout(), args[0], args[1], s)
+	app, keys := vaultScope(cmd, args)
+	return runVaultGet(cmd.OutOrStdout(), app, keys[0], s)
 }}

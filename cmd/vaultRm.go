@@ -13,7 +13,7 @@ import (
 	"pkg.blksails.net/bk/internal/vault"
 )
 
-// vaultRm.go 实现 `bk vault rm <app> KEY`：`Store.Remove` 删除目标记录 → 确认已删除
+// vaultRm.go 实现 `bk vault rm [app] KEY`：`Store.Remove` 删除目标记录 → 确认已删除
 // （design「rm 流程」；Requirement 4.1/4.2/4.3/4.4）。
 //
 // 边界（_Boundary: vaultCmd 组_）：本文件只承载 rm 子命令与其可测核心 runVaultRm，经
@@ -56,29 +56,32 @@ func runVaultRm(w io.Writer, app, key string, remover vaultRemover) error {
 	return err
 }
 
-// vaultRmCmd 是 `bk vault rm <app> KEY`。装配按当前 profile 认证的 vault.Store 后委托
+// vaultRmCmd 是 `bk vault rm [app] KEY`。装配按当前 profile 认证的 vault.Store 后委托
 // runVaultRm；RunE 保持轻薄，删除/提示与退出码语义均落在 runVaultRm。
 //
 // 采用 cobra.ExactArgs(2)：恰需应用名 + 单个 KEY；不符时由 cobra 提示参数错误并以非零退出码
 // 结束。未登录/会话失效时 newVaultStore 透传 AuthedClient 的引导「bk auth login」错误
 // （Requirement 7.2）。
 var vaultRmCmd = &cobra.Command{
-	Use:   "rm <app> KEY",
+	Use:   "rm [app] KEY",
 	Short: "删除该 app 下指定的单个 secret",
-	Long: `从 Supabase 内置 Vault 删除 (app, KEY) 对应的记录，删除成功后给出确认。
+	Long: `使用 --global 选择所选归属内的全局密钥，此时无需 app 参数。
+
+从 Supabase 内置 Vault 删除 (app, KEY) 对应的记录，删除成功后给出确认。
 
 指定的 (app, KEY) 不存在时以友好提示告知该 key 当前不存在，并以零退出码正常结束（幂等，
 不报错）；仅删除目标 key，同一 app 下的其余 key 不受影响。
 
 示例用法：
   bk vault rm myapp DB_PASSWORD`,
-	Args: cobra.ExactArgs(2),
+	Args: vaultArgs(1, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := newVaultStore(profile)
+		store, err := newVaultStore(cmd, profile)
 		if err != nil {
 			return err
 		}
-		return runVaultRm(cmd.OutOrStdout(), args[0], args[1], store)
+		app, keys := vaultScope(cmd, args)
+		return runVaultRm(cmd.OutOrStdout(), app, keys[0], store)
 	},
 }
 
