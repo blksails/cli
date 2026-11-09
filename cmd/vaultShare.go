@@ -54,6 +54,13 @@ var vaultShareCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		namespace, _ := cmd.Flags().GetString("company")
+		if cmd.Flags().Changed("company") && namespace == "" {
+			return fmt.Errorf("企业 namespace 不能为空")
+		}
+		if err := store.SetCompanyNamespace(namespace); err != nil {
+			return err
+		}
 		app, keys := vaultScope(cmd, args)
 		return runVaultShare(cmd.OutOrStdout(), app, keys, store)
 	},

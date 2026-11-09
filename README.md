@@ -326,7 +326,15 @@ bk vault run --global -- ./server --port 8080
 
 默认保存个人密钥，仅本人可访问；`--personal` 可显式选择个人归属。
 `--share` 选择当前登录身份所在企业，由服务端解析企业并验证有效成员身份。
-企业有效成员可读取密钥，只有 owner/admin 可写入和删除。`--personal` 与 `--share` 互斥。
+企业有效成员可读取密钥，owner/admin 可写入和删除；super_admin 可操作指定企业的密钥。
+使用 `--company <namespace>` 显式选择企业（配合 `--share` 或 `share` 子命令），不会修改用户的默认企业。
+
+```bash
+bk vault set --global --share --company blacksail ALIYUN_DOCKER_MIRROR_USERNAME=hysios@msn.com
+bk vault share --global --company blacksail TOKEN
+```
+
+API 请求使用可选字段 `company_namespace`；服务端解析 namespace 并校验权限，指定失败不会回退到默认企业。`--personal` 与 `--share` 互斥。
 归属与应用分组独立，可结合 `--global`：
 
 ```bash
