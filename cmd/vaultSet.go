@@ -3,7 +3,9 @@ package cmd
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 	"io"
+	"strings"
 )
 
 type vaultSetter interface {
@@ -29,14 +31,68 @@ func runVaultSet(w io.Writer, app string, pairs []string, setter vaultSetter) er
 	return err
 }
 
-var vaultSetCmd = &cobra.Command{Use: "set [app] KEY=VALUE [KEY=VALUE...]", Short: "通过 Supabase Vault 加密并写入 secret", Args: vaultArgs(1, -1), RunE: func(cmd *cobra.Command, args []string) error {
-	s, e := newVaultStore(cmd, profile)
-	if e != nil {
-		return e
+func vaultSetArgs(cmd *cobra.Command, args []string) error {
+	password, _ := cmd.Flags().GetBool("password")
+	if !password {
+		return vaultArgs(1, -1)(cmd, args)
 	}
-	app, pairs := vaultScope(cmd, args)
-	if len(pairs) == 0 {
-		return fmt.Errorf("缺少 KEY=VALUE")
+	if err := vaultArgs(1, 1)(cmd, args); err != nil {
+		return err
 	}
-	return runVaultSet(cmd.OutOrStdout(), app, pairs, s)
-}}
+	_, keys := vaultScope(cmd, args)
+	if keys[0] == "" || strings.Contains(keys[0], "=") {
+		return fmt.Errorf("--password 仅接受一个非空 KEY，不要提供 KEY=VALUE")
+	}
+	return nil
+}
+
+func runVaultPasswordSet(w io.Writer, app, key string, setter vaultSetter, read func() ([]byte, error)) error {
+	password, err := read()
+	defer clear(password)
+	if err != nil {
+		return fmt.Errorf("读取密码失败，未写入密钥")
+	}
+	if len(password) == 0 {
+		return fmt.Errorf("密码不能为空，未写入密钥")
+	}
+	return runVaultSet(w, app, []string{key + "=" + string(password)}, setter)
+}
+
+func readVaultPassword(cmd *cobra.Command) ([]byte, error) {
+	input, ok := cmd.InOrStdin().(interface{ Fd() uintptr })
+	if !ok || !term.IsTerminal(int(input.Fd())) {
+		return nil, fmt.Errorf("--password 需要交互式终端")
+	}
+	if _, err := fmt.Fprint(cmd.ErrOrStderr(), "请输入密码（输入不回显）："); err != nil {
+		return nil, err
+	}
+	password, err := term.ReadPassword(int(input.Fd()))
+	fmt.Fprintln(cmd.ErrOrStderr())
+	return password, err
+}
+
+var vaultSetCmd = &cobra.Command{
+	Use:   "set [app] KEY=VALUE [KEY=VALUE...]",
+	Short: "通过 Supabase Vault 加密并写入 secret",
+	Long: `写入一个或多个 KEY=VALUE。使用 --password KEY 从终端隐藏输入单个密码。
+
+  bk vault set --global --share --company blacksail --password ALIYUN_DOCKER_MIRROR_PASSWORD
+  bk vault set myapp --password DB_PASSWORD`,
+	Args: vaultSetArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := newVaultStore(cmd, profile)
+		if err != nil {
+			return err
+		}
+		app, pairs := vaultScope(cmd, args)
+		password, _ := cmd.Flags().GetBool("password")
+		if password {
+			return runVaultPasswordSet(cmd.OutOrStdout(), app, pairs[0], s, func() ([]byte, error) { return readVaultPassword(cmd) })
+		}
+		return runVaultSet(cmd.OutOrStdout(), app, pairs, s)
+	},
+}
+
+func init() {
+	vaultSetCmd.Flags().Bool("password", false, "从交互式终端隐藏输入单个 KEY 的值")
+}
