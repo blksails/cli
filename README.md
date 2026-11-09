@@ -365,3 +365,15 @@ bk vault share myapp DB_PASSWORD
 然后在单个数据库事务中写入企业并删除个人条目。任一 key 不存在、源值已变化或企业存在同名 key，
 整批失败且保留个人条目，不覆盖企业已有密钥。未选中的个人 key 不受影响。
 服务端和数据库共享迁移必须先上线，CLI 不会降级为分别复制、删除。
+
+
+### 隐藏输入密码
+
+使用 `--password KEY` 交互输入单个密钥值，终端不回显密码，密码不放在命令行参数中。
+
+```bash
+bk vault set --global --share --company blacksail --password ALIYUN_DOCKER_MIRROR_PASSWORD
+bk vault set myapp --password DB_PASSWORD
+```
+
+此模式要求交互式终端，只接受一个 KEY，不能同时提供 `KEY=VALUE`；读取失败或密码为空时不会写入。普通 `KEY=VALUE` 用法保持不变。
