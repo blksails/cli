@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 )
 
@@ -17,9 +18,10 @@ type Secret struct {
 	Value string `json:"value"`
 }
 type Store struct {
-	endpoint, token string
-	ownership       string
-	client          *http.Client
+	endpoint, token  string
+	ownership        string
+	companyNamespace string
+	client           *http.Client
 }
 
 var ErrPermission = errors.New("权限不足：请确认登录身份")
@@ -34,8 +36,7 @@ func NewStore(endpoint, token string) (*Store, error) {
 	return &Store{endpoint: endpoint, token: token, client: &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
-// NewScopedStore selects an ownership kind; the server resolves the actual owner
-// from the verified session. No caller-supplied user or company ID is sent.
+// NewScopedStore selects ownership; the server authorizes the requested company.
 func NewScopedStore(endpoint, token, ownership string) (*Store, error) {
 	if ownership != "personal" && ownership != "company" {
 		return nil, errors.New("无效的密钥归属")
@@ -48,6 +49,17 @@ func NewScopedStore(endpoint, token, ownership string) (*Store, error) {
 	return store, nil
 }
 
+var companyNamespacePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$`)
+
+// SetCompanyNamespace selects a company without granting access to it.
+func (s *Store) SetCompanyNamespace(namespace string) error {
+	if namespace != "" && !companyNamespacePattern.MatchString(namespace) {
+		return errors.New("无效的企业 namespace")
+	}
+	s.companyNamespace = namespace
+	return nil
+}
+
 func (s *Store) call(operation, app, key string, value *string, out interface{}) error {
 	return s.callWithKeys(operation, app, key, value, nil, out)
 }
@@ -56,6 +68,9 @@ func (s *Store) callWithKeys(operation, app, key string, value *string, keys []s
 	payload := map[string]interface{}{"operation": operation, "app": app}
 	if s.ownership == "company" {
 		payload["ownership"] = "company"
+	}
+	if s.companyNamespace != "" {
+		payload["company_namespace"] = s.companyNamespace
 	}
 	if keys != nil {
 		payload["keys"] = keys

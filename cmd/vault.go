@@ -20,6 +20,7 @@ set/get/list/rm/export/run 的命令用法保持不变。`,
 }
 
 func init() {
+	vaultCmd.PersistentFlags().String("company", "", "指定企业 namespace（配合 --share 或 share 子命令）")
 	vaultCmd.PersistentFlags().Bool("global", false, "使用所选归属内的全局密钥分组（无需 app）")
 	vaultCmd.AddCommand(vaultSetCmd, vaultGetCmd, vaultExportCmd)
 	vaultCmd.PersistentFlags().Bool("personal", false, "使用个人密钥（默认）")
@@ -33,7 +34,18 @@ func newVaultStore(cmd *cobra.Command, profile string) (*vault.Store, error) {
 	if share {
 		ownership = "company"
 	}
-	return newVaultStoreForOwnership(profile, ownership)
+	namespace, _ := cmd.Flags().GetString("company")
+	if cmd.Flags().Changed("company") && strings.TrimSpace(namespace) == "" {
+		return nil, fmt.Errorf("企业 namespace 不能为空")
+	}
+	if namespace != "" && !share {
+		return nil, fmt.Errorf("--company 需配合 --share 使用")
+	}
+	store, err := newVaultStoreForOwnership(profile, ownership)
+	if err != nil {
+		return nil, err
+	}
+	return store, store.SetCompanyNamespace(namespace)
 }
 
 func newVaultStoreForOwnership(profile, ownership string) (*vault.Store, error) {

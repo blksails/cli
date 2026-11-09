@@ -173,3 +173,41 @@ func TestShareRequestsSelectedKeysWithoutReadingPlaintext(t *testing.T) {
 		t.Fatalf("conflict: %v", err)
 	}
 }
+
+func TestCompanyNamespaceRequests(t *testing.T) {
+	for _, operation := range []string{"set", "share"} {
+		t.Run(operation, func(t *testing.T) {
+			reply := `{"data":true}`
+			if operation == "share" {
+				reply = `{"data":1}`
+			}
+			s := testStore(t, operation, reply, 200, func(body map[string]interface{}) {
+				if body["company_namespace"] != "blacksail" {
+					t.Errorf("namespace = %v", body["company_namespace"])
+				}
+			})
+			if err := s.SetCompanyNamespace("blacksail"); err != nil {
+				t.Fatal(err)
+			}
+			if operation == "share" {
+				_, err := s.Share("global", []string{"KEY"})
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				s.ownership = "company"
+				if err := s.Set("global", "KEY", "value"); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+func TestInvalidCompanyNamespace(t *testing.T) {
+	for _, namespace := range []string{" ", "../other", "a/b", strings.Repeat("a", 64)} {
+		s := &Store{}
+		if err := s.SetCompanyNamespace(namespace); err == nil {
+			t.Errorf("accepted %q", namespace)
+		}
+	}
+}
