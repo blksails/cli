@@ -13,33 +13,28 @@ var vaultCmd = &cobra.Command{
 	Use: "vault", Short: "BlackSail 统一密钥库",
 	Long: `使用服务端加密密钥库，按个人或企业归属以及 app 分组隔离。
 使用 --global 选择 global 分组并省略 app；全局指所选归属内共享。
-默认归属个人；--share 选择当前登录用户所在企业，服务端校验企业权限。
+默认归属个人；--company <namespace> 选择企业，服务端校验企业权限。
 不需要本机 vault.key；主密钥只保存在服务器。
 set/get/list/rm/export/run 的命令用法保持不变。`,
 	RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 }
 
 func init() {
-	vaultCmd.PersistentFlags().String("company", "", "指定企业 namespace（配合 --share 或 share 子命令）")
+	vaultCmd.PersistentFlags().String("company", "", "指定企业 namespace（选择企业密钥库或 share 的目标企业）")
 	vaultCmd.PersistentFlags().Bool("global", false, "使用所选归属内的全局密钥分组（无需 app）")
 	vaultCmd.AddCommand(vaultSetCmd, vaultGetCmd, vaultExportCmd)
 	vaultCmd.PersistentFlags().Bool("personal", false, "使用个人密钥（默认）")
-	vaultCmd.PersistentFlags().Bool("share", false, "共享给当前登录身份所在企业（成员可读，owner/admin 可写）")
-	vaultCmd.MarkFlagsMutuallyExclusive("personal", "share")
+	vaultCmd.MarkFlagsMutuallyExclusive("personal", "company")
 	rootCmd.AddCommand(vaultCmd)
 }
 func newVaultStore(cmd *cobra.Command, profile string) (*vault.Store, error) {
 	ownership := "personal"
-	share, _ := cmd.Flags().GetBool("share")
-	if share {
-		ownership = "company"
-	}
 	namespace, _ := cmd.Flags().GetString("company")
 	if cmd.Flags().Changed("company") && strings.TrimSpace(namespace) == "" {
 		return nil, fmt.Errorf("企业 namespace 不能为空")
 	}
-	if namespace != "" && !share {
-		return nil, fmt.Errorf("--company 需配合 --share 使用")
+	if namespace != "" {
+		ownership = "company"
 	}
 	store, err := newVaultStoreForOwnership(profile, ownership)
 	if err != nil {

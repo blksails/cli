@@ -85,13 +85,13 @@ func TestVaultRunGlobalAndLegacyParsing(t *testing.T) {
 
 func TestVaultOwnershipFlags(t *testing.T) {
 	for _, args := range [][]string{
-		{"set", "--share", "--personal", "myapp", "KEY=value"},
-		{"set", "--share", "--personal", "--global", "KEY=value"},
+		{"set", "--company", "blacksail", "--personal", "myapp", "KEY=value"},
+		{"set", "--company", "blacksail", "--personal", "--global", "KEY=value"},
 	} {
 		root := &cobra.Command{Use: "vault"}
-		root.PersistentFlags().Bool("share", false, "")
+		root.PersistentFlags().String("company", "", "")
 		root.PersistentFlags().Bool("personal", false, "")
-		root.MarkFlagsMutuallyExclusive("personal", "share")
+		root.MarkFlagsMutuallyExclusive("personal", "company")
 		root.PersistentFlags().Bool("global", false, "")
 		ran := false
 		root.AddCommand(&cobra.Command{Use: "set", Args: vaultArgs(1, -1), Run: func(*cobra.Command, []string) { ran = true }})

@@ -76,7 +76,7 @@ var vaultSetCmd = &cobra.Command{
 	Short: "通过 Supabase Vault 加密并写入 secret",
 	Long: `写入一个或多个 KEY=VALUE。使用 --password KEY 从终端隐藏输入单个密码。
 
-  bk vault set --global --share --company blacksail --password ALIYUN_DOCKER_MIRROR_PASSWORD
+  bk vault set --global --company blacksail --password ALIYUN_DOCKER_MIRROR_PASSWORD
   bk vault set myapp --password DB_PASSWORD`,
 	Args: vaultSetArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
