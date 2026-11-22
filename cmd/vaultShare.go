@@ -29,11 +29,11 @@ var vaultShareCmd = &cobra.Command{
 
   bk vault ls --global
   bk vault share --global TOKEN API_KEY
-  bk vault ls --global --share
+  bk vault ls --global --company blacksail
   bk vault share myapp DB_PASSWORD`,
 	Args: func(cmd *cobra.Command, args []string) error {
-		if cmd.Flags().Changed("share") || cmd.Flags().Changed("personal") {
-			return fmt.Errorf("share 子命令固定从个人转为企业共享，无需 --share 或 --personal")
+		if cmd.Flags().Changed("personal") {
+			return fmt.Errorf("share 子命令固定从个人转为企业共享，无需 --personal")
 		}
 		if err := vaultArgs(1, -1)(cmd, args); err != nil {
 			return err

@@ -308,7 +308,7 @@ bk vault run aliyun-registry -- sh -c 'printf "%s" "$REGISTRY_PASSWORD" | docker
 
 ### Vault 全局密钥
 
-使用 `--global` 选择当前归属内的 `global` 分组（等同于显式指定 app 为 `global`）。默认归属个人，也可使用 `--share` 选择企业。
+使用 `--global` 选择当前归属内的 `global` 分组（等同于显式指定 app 为 `global`）。默认归属个人，使用 `--company <namespace>` 选择企业。
 
 ```bash
 bk vault set --global TOKEN=... A=1
@@ -325,23 +325,23 @@ bk vault run --global -- ./server --port 8080
 ### Vault 个人与企业归属
 
 默认保存个人密钥，仅本人可访问；`--personal` 可显式选择个人归属。
-`--share` 选择当前登录身份所在企业，由服务端解析企业并验证有效成员身份。
+`--company <namespace>` 选择企业，由服务端解析企业并验证有效成员身份。
 企业有效成员可读取密钥，owner/admin 可写入和删除；super_admin 可操作指定企业的密钥。
-使用 `--company <namespace>` 显式选择企业（配合 `--share` 或 `share` 子命令），不会修改用户的默认企业。
+使用 `--company <namespace>` 显式选择企业（也可指定 `share` 子命令的目标企业），不会修改用户的默认企业。
 
 ```bash
-bk vault set --global --share --company blacksail ALIYUN_DOCKER_MIRROR_USERNAME=hysios@msn.com
+bk vault set --global --company blacksail ALIYUN_DOCKER_MIRROR_USERNAME=hysios@msn.com
 bk vault share --global --company blacksail TOKEN
 ```
 
-API 请求使用可选字段 `company_namespace`；服务端解析 namespace 并校验权限，指定失败不会回退到默认企业。`--personal` 与 `--share` 互斥。
+API 请求使用可选字段 `company_namespace`；服务端解析 namespace 并校验权限，指定失败不会回退到默认企业。`--personal` 与 `--company` 互斥。
 归属与应用分组独立，可结合 `--global`：
 
 ```bash
 bk vault set --personal --global TOKEN=...
-bk vault set --share --global TOKEN=...
-bk vault get --share --global TOKEN
-bk vault run --share myapp -- ./server
+bk vault set --company blacksail --global TOKEN=...
+bk vault get --company blacksail --global TOKEN
+bk vault run --company blacksail myapp -- ./server
 ```
 
 个人和企业密钥独立存储，不自动合并。无企业身份或无权限时直接报错，不回退到个人归属。
@@ -354,12 +354,12 @@ bk vault run --share myapp -- ./server
 ```bash
 bk vault ls --global
 bk vault share --global TOKEN API_KEY
-bk vault ls --global --share
+bk vault ls --global --company blacksail
 # 按应用分组同样支持：
 bk vault share myapp DB_PASSWORD
 ```
 
-`share` 固定将当前用户的个人条目转为当前企业归属，不需额外加 `--share`。
+`share` 固定将当前用户的个人条目转为当前企业归属，可通过 `--company <namespace>` 指定目标企业。
 转移后个人条目移除，企业有效成员可读，owner/admin 可修改。执行共享需要 owner/admin 身份。
 每次可选择 1 至 100 个 key（重复键去重）。服务端只解密所选 key，重新加密为企业归属，
 然后在单个数据库事务中写入企业并删除个人条目。任一 key 不存在、源值已变化或企业存在同名 key，
@@ -372,7 +372,7 @@ bk vault share myapp DB_PASSWORD
 使用 `--password KEY` 交互输入单个密钥值，终端不回显密码，密码不放在命令行参数中。
 
 ```bash
-bk vault set --global --share --company blacksail --password ALIYUN_DOCKER_MIRROR_PASSWORD
+bk vault set --global --company blacksail --password ALIYUN_DOCKER_MIRROR_PASSWORD
 bk vault set myapp --password DB_PASSWORD
 ```
 
